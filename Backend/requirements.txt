@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+groq
+chromadb
+pydantic
+python-dotenv
+httpx
+pypdf
+instructor
