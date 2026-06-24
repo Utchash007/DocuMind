@@ -50,6 +50,10 @@ htmlcov/
 *.sqlite3
 .chroma/
 
+# Uploaded files
+Backend/uploads/
+
+
 # IDEs and Editors
 .vscode/
 .idea/
