@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chat View — DocuMind</title>
+<style>
+  :root {
+    --light: #F1F6F9;
+    --slate: #394867;
+    --navy: #212A3E;
+    --bluegray: #9BA4B5;
+    --text: #212A3E;
+    --muted: #5f6b85;
+    --border: #e1e6ee;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body { height: 100%; }
+
+  body {
+    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+    background: linear-gradient(135deg, var(--light) 0%, #e4ebf3 100%);
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    padding: 32px;
+  }
+
+  .chat-panel {
+    width: 100%;
+    max-width: 940px;
+    background: #ffffff;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    box-shadow:
+      0 1px 2px rgba(33, 42, 62, 0.06),
+      0 12px 32px -12px rgba(57, 72, 103, 0.25);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .chat-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 22px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .chat-header__icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 13px;
+    background: linear-gradient(135deg, var(--slate) 0%, var(--navy) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 4px 10px -3px rgba(33, 42, 62, 0.5);
+  }
+
+  .chat-header__icon svg { width: 18px; height: 18px; stroke: #fff; }
+
+  .chat-header__titles { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+  .chat-header__title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .chat-header__subtitle {
+    font-size: 0.72rem;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+
+  .chat-header__badge {
+    margin-left: auto;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--slate);
+    background: #e3e9f2;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 4px 12px;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    transition: background 0.2s ease, border-color 0.2s ease;
+  }
+
+  .chat-header__badge:hover { background: #ffffff; border-color: var(--slate); }
+
+  .chat-stream {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--bluegray) transparent;
+  }
+
+  .chat-stream::-webkit-scrollbar { width: 8px; }
+  .chat-stream::-webkit-scrollbar-track { background: transparent; }
+  .chat-stream::-webkit-scrollbar-thumb { background: #d3dae6; border-radius: 999px; }
+  .chat-stream::-webkit-scrollbar-thumb:hover { background: var(--bluegray); }
+
+  .stream-inner {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 26px 24px 30px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+
+  .msg--assistant {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .assistant-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--slate) 0%, var(--navy) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+    box-shadow: 0 3px 8px -3px rgba(33, 42, 62, 0.5);
+  }
+
+  .assistant-avatar svg { width: 14px; height: 14px; stroke: #fff; }
+
+  .msg--assistant .msg-body {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.95rem;
+    color: var(--text);
+    line-height: 1.65;
+  }
+
+  .msg-body p + p { margin-top: 10px; }
+
+  .page-chip {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--slate);
+    background: #e3e9f2;
+    border-radius: 6px;
+    padding: 1px 7px;
+    vertical-align: 1px;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+
+  .msg--user { display: flex; justify-content: flex-end; }
+
+  .user-bubble {
+    max-width: 70%;
+    background: var(--slate);
+    color: #ffffff;
+    font-size: 0.95rem;
+    line-height: 1.55;
+    border-radius: 16px;
+    border-bottom-right-radius: 4px;
+    padding: 11px 16px;
+    box-shadow: 0 4px 12px -6px rgba(33, 42, 62, 0.45);
+  }
+
+  .streaming-cursor {
+    display: inline-block;
+    color: var(--slate);
+    margin-left: 2px;
+    transform: translateY(2px);
+    animation: blink 1s step-end infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  .composer {
+    flex-shrink: 0;
+    background: #ffffff;
+    border-top: 1px solid var(--border);
+    padding: 16px 24px 18px;
+  }
+
+  .composer-inner {
+    max-width: 760px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .composer-field {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #ffffff;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 6px 6px 10px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .composer-field:focus-within {
+    border-color: var(--slate);
+    box-shadow: 0 0 0 3px rgba(57, 72, 103, 0.12);
+  }
+
+  .attach-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: var(--bluegray);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+
+  .attach-btn:hover { background: var(--light); color: var(--slate); }
+
+  .attach-btn svg, .send-btn svg { width: 17px; height: 17px; }
+
+  .composer-input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 0.95rem;
+    color: var(--text);
+  }
+
+  .composer-input::placeholder { color: var(--bluegray); }
+
+  .send-btn {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    border: none;
+    background: var(--navy);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    cursor: pointer;
+    box-shadow: 0 4px 10px -3px rgba(33, 42, 62, 0.5);
+    transition: background 0.2s ease, transform 0.2s ease;
+  }
+
+  .send-btn:hover { background: var(--slate); transform: translateY(-1px); }
+  .send-btn:active { transform: translateY(0); }
+
+  .composer-hint {
+    max-width: 760px;
+    margin: 10px auto 0;
+    text-align: center;
+    font-size: 0.72rem;
+    color: var(--muted);
+    letter-spacing: 0.01em;
+  }
+
+  @media (max-width: 640px) {
+    body { padding: 16px; }
+    .stream-inner { padding: 20px 16px 24px; }
+    .composer { padding: 12px 16px 14px; }
+    .user-bubble { max-width: 85%; }
+    .chat-header__badge { display: none; }
+  }
+</style>
+</head>
+<body>
+
+  <main class="chat-panel">
+
+    <header class="chat-header">
+      <div class="chat-header__icon">
+        <svg fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <path d="M14 2v6h6"/>
+        </svg>
+      </div>
+      <div class="chat-header__titles">
+        <h1 class="chat-header__title">Quarterly Report Q3</h1>
+        <span class="chat-header__subtitle">DocuMind · 14 pages indexed</span>
+      </div>
+      <span class="chat-header__badge">DocuMind</span>
+    </header>
+
+    <section class="chat-stream" aria-label="Conversation">
+      <div class="stream-inner">
+
+        <article class="msg msg--assistant">
+          <div class="assistant-avatar">
+            <svg fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <path d="M14 2v6h6"/>
+            </svg>
+          </div>
+          <div class="msg-body">
+            <p>I've indexed <strong>Quarterly Report Q3</strong> — a 14-page document covering revenue growth, customer retention metrics, and regional breakdowns, plus the risk assessment prepared by the operations team. Ask me anything about it.</p>
+          </div>
+        </article>
+
+        <div class="msg msg--user">
+          <div class="user-bubble">How did revenue grow compared to last quarter?</div>
+        </div>
+
+        <article class="msg msg--assistant">
+          <div class="assistant-avatar">
+            <svg fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <path d="M14 2v6h6"/>
+            </svg>
+          </div>
+          <div class="msg-body">
+            <p>Revenue grew <strong>18.4% quarter-over-quarter</strong>, reaching $4.2M. Growth was driven primarily by the enterprise segment, which accounted for 61% of new bookings <span class="page-chip">p. 4</span>. The EMEA region was the strongest contributor with 42% of new ARR <span class="page-chip">p. 6</span>.</p>
+          </div>
+        </article>
+
+        <div class="msg msg--user">
+          <div class="user-bubble">What risks did the operations team flag for next quarter?</div>
+        </div>
+
+        <article class="msg msg--assistant">
+          <div class="assistant-avatar">
+            <svg fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <path d="M14 2v6h6"/>
+            </svg>
+          </div>
+          <div class="msg-body">
+            <p>The report highlights three key risks: supply-chain delays affecting hardware bundles <span class="page-chip">p. 9</span>, elevated churn in the SMB tier at 3.2% monthly <span class="page-chip">p. 10</span>, and hiring bottlenecks in support engineering <span class="page-chip">p. 11</span>. Mitigation plans for each are outlined starting on page 12<span class="streaming-cursor">▍</span></p>
+          </div>
+        </article>
+
+      </div>
+    </section>
+
+    <footer class="composer">
+      <div class="composer-inner">
+        <div class="composer-field">
+          <button type="button" class="attach-btn" aria-label="Attach a file">
+            <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+              <path d="M12 5v14"/>
+              <path d="M5 12h14"/>
+            </svg>
+          </button>
+          <input type="text" class="composer-input" placeholder="Ask anything…">
+        </div>
+        <button type="button" class="send-btn" aria-label="Send message">
+          <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+            <path d="M12 19V5"/>
+            <path d="M5 12l7-7 7 7"/>
+          </svg>
+        </button>
+      </div>
+      <p class="composer-hint">DocuMind answers cite page numbers from Quarterly Report Q3.</p>
+    </footer>
+
+  </main>
+
+</body>
+</html>

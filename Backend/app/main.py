@@ -1,9 +1,11 @@
 import os
 import shutil
 from pathlib import Path
-from typing import List, Optional
+from tempfile import NamedTemporaryFile
+from typing import Annotated, List
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 import chromadb
@@ -15,7 +17,7 @@ from app.utils import (
     process_pdf, 
     get_embeddings_batch, 
     BM25Retriever, 
-    extract_relevant_sentence
+    match_citation_to_chunk
 )
 
 # Load env variables from the root directory (.env is in d:\AI_Projects\Documind)
@@ -54,11 +56,16 @@ def get_chroma_collection():
 # Define Response Schema for Instructor / Pydantic
 class Citation(BaseModel):
     sentence: str = Field(description="The exact sentence or short phrase from the context that supports the answer")
-    page: int = Field(description="The page number where this sentence was found in the document")
+    page: int = Field(ge=1, description="The page number where this sentence was found in the document")
+    filename: str | None = Field(default=None, description="The exact source filename for this citation")
 
 class AnswerResponse(BaseModel):
     answer: str = Field(description="The comprehensive answer generated using only the provided context. Must be grounded in the context.")
     citations: List[Citation] = Field(description="List of exact sentence citations with page numbers supporting the answer")
+
+class UploadResponse(BaseModel):
+    message: str
+    chunks_count: int = Field(ge=1)
 
 @app.get("/")
 def read_root():
@@ -82,36 +89,48 @@ def list_files():
     Returns list of processed files stored in the upload directory.
     """
     try:
-        files = [f.name for f in UPLOAD_DIR.glob("*.pdf")]
+        files = sorted(f.name for f in UPLOAD_DIR.iterdir() if f.is_file() and f.suffix.lower() == ".pdf")
         return {"files": files}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list files: {str(e)}")
 
+def pdf_path(filename: str) -> Path:
+    if not filename or any(character in filename for character in ("/", "\\", ":", "\x00")) or Path(filename).name != filename:
+        raise HTTPException(status_code=400, detail="Invalid PDF filename.")
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+    path = (UPLOAD_DIR / filename).resolve()
+    if path.parent != UPLOAD_DIR.resolve():
+        raise HTTPException(status_code=400, detail="Invalid PDF filename.")
+    return path
+
+
+@app.get("/files/{filename}")
+def read_file(filename: str) -> FileResponse:
+    path = pdf_path(filename)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="This PDF is no longer available.")
+    return FileResponse(path, media_type="application/pdf", filename=filename, content_disposition_type="inline")
+
+
 @app.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
+def upload_file(file: Annotated[UploadFile, File()]) -> UploadResponse:
     """
     Accepts PDF upload, parses text page-by-page, generates embeddings,
     and indexes chunks in Chroma hosted DB.
     """
-    if not file.filename.endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
-    
-    file_path = UPLOAD_DIR / file.filename
+    filename = file.filename or ""
+    file_path = pdf_path(filename)
+    staged_path = None
     try:
-        # Save file to local disk
-        with file_path.open("wb") as buffer:
+        with NamedTemporaryFile(dir=UPLOAD_DIR, suffix=".upload", delete=False) as buffer:
+            staged_path = Path(buffer.name)
             shutil.copyfileobj(file.file, buffer)
             
         # Parse PDF page-by-page
-        chunks = process_pdf(str(file_path), file.filename)
+        chunks = process_pdf(str(staged_path), filename)
         if not chunks:
             raise HTTPException(status_code=400, detail="No extractable text found in PDF.")
-        
-        # Get Chroma database collection
-        collection = get_chroma_collection()
-        
-        # Clean any existing chunks for this specific document to prevent duplicates
-        collection.delete(where={"source": file.filename})
         
         # Prepare data for vector database
         ids = [c["id"] for c in chunks]
@@ -126,30 +145,51 @@ async def upload_file(file: UploadFile = File(...)):
             batch_embs = get_embeddings_batch(batch_texts)
             embeddings.extend(batch_embs)
             
-        # Ingest into Chroma
-        collection.add(
+        collection = get_chroma_collection()
+        previous_ids = set(collection.get(where={"source": filename}, include=[])["ids"])
+        collection.upsert(
             ids=ids,
             embeddings=embeddings,
             documents=texts,
             metadatas=metadatas
         )
-        
-        return {
-            "message": f"Successfully processed '{file.filename}'",
-            "chunks_count": len(chunks)
-        }
+        stale_ids = previous_ids.difference(ids)
+        if stale_ids:
+            collection.delete(ids=sorted(stale_ids))
+        staged_path.replace(file_path)
+
+        return UploadResponse(
+            message=f"Successfully processed '{filename}'",
+            chunks_count=len(chunks),
+        )
+    except HTTPException:
+        raise
     except Exception as e:
-        # Cleanup file if processing failed
-        if file_path.exists():
-            file_path.unlink()
         raise HTTPException(status_code=500, detail=f"Upload processing failed: {str(e)}")
+    finally:
+        if staged_path is not None:
+            staged_path.unlink(missing_ok=True)
 
 @app.post("/query", response_model=AnswerResponse)
-async def query_document(query: str = Form(...), filename: Optional[str] = Form(None)):
+def query_document(
+    query: Annotated[str, Form(min_length=1, max_length=8000)],
+    filename: Annotated[str | None, Form()] = None,
+    filenames: Annotated[list[str] | None, Form()] = None,
+) -> AnswerResponse:
     """
     Retrieves context using Hybrid RAG (Dense Chroma + Sparse BM25),
     then queries Groq using instructor for structured answers with citations.
     """
+    if not query.strip():
+        raise HTTPException(status_code=400, detail="Enter a question about your sources.")
+    if filename is not None and filenames is not None:
+        raise HTTPException(status_code=400, detail="Use either filename or filenames, not both.")
+    sources = list(dict.fromkeys(filenames if filenames is not None else ([filename] if filename is not None else [])))
+    if filenames is not None and not sources:
+        raise HTTPException(status_code=400, detail="Select at least one source.")
+    for source in sources:
+        pdf_path(source)
+
     groq_api_key = os.getenv("GROQ_API_KEY")
     if not groq_api_key:
         raise HTTPException(status_code=500, detail="GROQ_API_KEY environment variable is missing.")
@@ -159,8 +199,9 @@ async def query_document(query: str = Form(...), filename: Optional[str] = Form(
         
         # Fetch all document chunks matching source filter to build BM25 index
         # If no filename is specified, we query across all uploaded documents
-        filter_dict = {"source": filename} if filename else {}
-        all_data = collection.get(where=filter_dict)
+        filter_dict = {"source": sources[0]} if len(sources) == 1 else ({"source": {"$in": sources}} if sources else None)
+        filter_args = {"where": filter_dict} if filter_dict else {}
+        all_data = collection.get(**filter_args)
         
         if not all_data or not all_data["ids"]:
             raise HTTPException(status_code=400, detail="No documents indexed yet. Please upload a PDF first.")
@@ -184,7 +225,7 @@ async def query_document(query: str = Form(...), filename: Optional[str] = Form(
         vector_results = collection.query(
             query_embeddings=[query_vector],
             n_results=min(10, len(corpus)),
-            where=filter_dict
+            **filter_args
         )
         
         # Map dense similarity scores
@@ -220,8 +261,9 @@ async def query_document(query: str = Form(...), filename: Optional[str] = Form(
         context_parts = []
         for rank, (chunk, score) in enumerate(top_candidates):
             page_num = chunk["metadata"]["page"]
+            source = chunk["metadata"]["source"]
             text_content = chunk["text"]
-            context_parts.append(f"[Document Chunk {rank+1} | Page {page_num}]: {text_content}")
+            context_parts.append(f"[Document Chunk {rank+1} | Source: {source} | Page {page_num}]: {text_content}")
             
         context_text = "\n\n".join(context_parts)
         
@@ -241,7 +283,7 @@ async def query_document(query: str = Form(...), filename: Optional[str] = Form(
                         "You are a meticulous, document-answering assistant. "
                         "Answer the user's question using ONLY the provided document chunks as context. "
                         "For every statement or fact you write, extract the exact supporting sentence "
-                        "from the context and specify its page number. "
+                        "from the context and specify its page number and exact source filename. "
                         "Do not make up facts or use external knowledge."
                     )
                 },
@@ -255,17 +297,26 @@ async def query_document(query: str = Form(...), filename: Optional[str] = Form(
         
         # Double check and match exact supporting sentences inside references
         refined_citations = []
+        candidate_chunks = [chunk for chunk, _score in top_candidates]
         for cit in structured_response.citations:
             # Find the best sentence match in the top chunks to make sure it's accurate
-            exact_match = extract_relevant_sentence(context_text, cit.sentence)
-            refined_citations.append(
-                Citation(sentence=exact_match, page=cit.page)
+            match = match_citation_to_chunk(
+                candidate_chunks, cit.sentence, cit.filename, cit.page
             )
+            if match is not None:
+                chunk, exact_match = match
+                refined_citations.append(Citation(
+                    sentence=exact_match,
+                    page=chunk["metadata"]["page"],
+                    filename=chunk["metadata"]["source"],
+                ))
             
         return AnswerResponse(
             answer=structured_response.answer,
             citations=refined_citations
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Query answering failed: {str(e)}")
