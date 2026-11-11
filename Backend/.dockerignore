@@ -1,0 +1,30 @@
+# Local environments and caches are never part of the image.
+.venv
+venv
+__pycache__
+*.py[cod]
+*.egg-info
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Runtime and local data.
+uploads
+*.log
+
+# Secrets never belong in an image layer.
+.env
+.env.*
+!.env.example
+
+# Local tooling and documentation.
+.git
+.gitignore
+.vscode
+.idea
+Dockerfile
+.dockerignore
+README.md
+AGENTS.md
+CLAUDE.md
+scripts

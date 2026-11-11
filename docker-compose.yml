@@ -1,0 +1,137 @@
+# DocuMind / NoteMind container stack.
+#
+# The browser only ever talks to the frontend. The frontend server talks to
+# the FastAPI backend over the internal Compose network (`backend:8000`), and
+# the backend is never published to the host.
+#
+#   docker compose build
+#   docker compose up -d
+#   docker compose run --rm backend alembic upgrade head
+#
+# Variables are read from the repository-root `.env` file. Add the New Relic
+# license key there to switch the agent on:
+#
+#   NEW_RELIC_LICENSE_KEY=<your license key>
+#   NEW_RELIC_ENVIRONMENT=production
+#
+# A database URL that points at `localhost` or `127.0.0.1` is unreachable
+# from inside a container; use a host name the network can resolve.
+
+name: documind
+
+# ---------------------------------------------------------------------------
+# Shared building blocks
+# ---------------------------------------------------------------------------
+x-backend-build: &backend-build
+  context: ./Backend
+  dockerfile: Dockerfile
+
+x-backend-environment: &backend-environment
+  DATABASE_URL: ${DATABASE_URL:-}
+  APPWRITE_ENDPOINT: ${APPWRITE_ENDPOINT:-}
+  APPWRITE_PROJECT_ID: ${APPWRITE_PROJECT_ID:-}
+  APPWRITE_API_KEY: ${APPWRITE_API_KEY:-}
+  APPWRITE_STORAGE_BUCKET_ID: ${APPWRITE_STORAGE_BUCKET_ID:-}
+  CHROMA_API_KEY: ${CHROMA_API_KEY:-}
+  CHROMA_TENANT: ${CHROMA_TENANT:-}
+  CHROMA_DATABASE: ${CHROMA_DATABASE:-}
+  CHROMA_HOST: ${CHROMA_HOST:-}
+  GROQ_API_KEY: ${GROQ_API_KEY:-}
+  DOCUMIND_EMBEDDING_PROVIDER: ${DOCUMIND_EMBEDDING_PROVIDER:-hf}
+  HF_API_KEY: ${HF_API_KEY:-}
+  HF_TOKEN: ${HF_TOKEN:-}
+  JINA_API_KEY: ${JINA_API_KEY:-}
+  JINA_EMBEDDING_MODEL: ${JINA_EMBEDDING_MODEL:-}
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+  # New Relic. The agent stays switched off while the license key is empty.
+  NEW_RELIC_LICENSE_KEY: ${NEW_RELIC_LICENSE_KEY:-}
+  NEW_RELIC_APP_NAME: ${NEW_RELIC_APP_NAME:-DocuMind Backend}
+  NEW_RELIC_ENVIRONMENT: ${NEW_RELIC_ENVIRONMENT:-production}
+
+x-frontend-environment: &frontend-environment
+  # Internal address of the backend container. Never exposed to the browser.
+  BACKEND_URL: http://backend:8000
+  # Browser calls stay same-origin and are proxied by the Next.js server.
+  NEXT_PUBLIC_API_BASE_URL: /api/backend
+  # The standalone server binds to every interface, not to the container name.
+  HOSTNAME: 0.0.0.0
+  APPWRITE_ENDPOINT: ${APPWRITE_ENDPOINT:-}
+  APPWRITE_PROJECT_ID: ${APPWRITE_PROJECT_ID:-}
+  APPWRITE_API_KEY: ${APPWRITE_API_KEY:-}
+  # New Relic. The agent stays switched off while the license key is empty.
+  NEW_RELIC_LICENSE_KEY: ${NEW_RELIC_LICENSE_KEY:-}
+  NEW_RELIC_APP_NAME: ${NEW_RELIC_APP_NAME:-NoteMind Web}
+  NEW_RELIC_ENVIRONMENT: ${NEW_RELIC_ENVIRONMENT:-production}
+
+# ---------------------------------------------------------------------------
+# Services
+# ---------------------------------------------------------------------------
+services:
+  backend:
+    build: *backend-build
+    image: documind-backend:latest
+    restart: unless-stopped
+    environment: *backend-environment
+    expose:
+      - "8000"
+    networks:
+      - documind
+
+  worker:
+    build: *backend-build
+    image: documind-backend:latest
+    restart: unless-stopped
+    command: ["python", "-m", "app.workers.pdf_worker"]
+    environment: *backend-environment
+    # The worker serves no HTTP endpoint; the image healthcheck does not apply.
+    healthcheck:
+      disable: true
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - documind
+
+  frontend:
+    build:
+      context: ./Frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: /api/backend
+        NEXT_PUBLIC_APPWRITE_ENDPOINT: ${NEXT_PUBLIC_APPWRITE_ENDPOINT:-}
+        NEXT_PUBLIC_APPWRITE_PROJECT_ID: ${NEXT_PUBLIC_APPWRITE_PROJECT_ID:-}
+    image: documind-frontend:latest
+    restart: unless-stopped
+    environment: *frontend-environment
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - documind
+
+  # Optional local PostgreSQL for a self-contained stack. Start it with
+  # `docker compose --profile local-db up -d` and point DATABASE_URL at
+  # postgresql+psycopg://documind:documind@postgres:5432/documind
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["local-db"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: documind
+      POSTGRES_PASSWORD: documind
+      POSTGRES_DB: documind
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - documind-postgres:/var/lib/postgresql/data
+    networks:
+      - documind
+
+networks:
+  documind:
+    driver: bridge
+
+volumes:
+  documind-postgres:
