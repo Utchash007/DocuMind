@@ -84,8 +84,8 @@ def get_database_url(environment: str | None = None) -> str:
 
 
 def make_engine(database_url: str | None = None, *, environment: str | None = None) -> Engine:
-    """Create a synchronous SQLAlchemy engine for PostgreSQL (psycopg)."""
-    url = database_url or get_database_url(environment)
+    """Create a synchronous SQLAlchemy engine for PostgreSQL (psycopg); driverless URLs are normalized onto psycopg 3."""
+    url = normalize_postgres_url(database_url or get_database_url(environment))
     return create_engine(
         url,
         pool_pre_ping=True,  # tolerate idle/balancer-dropped connections
@@ -202,6 +202,18 @@ def get_db() -> Iterator[Session]:
         yield session
 
 
+def normalize_postgres_url(url: str) -> str:
+    """Map a driverless PostgreSQL URL onto the installed psycopg 3 dialect.
+
+    SQLAlchemy resolves the bare ``postgresql://``/``postgres://`` scheme to
+    the (not installed here) psycopg2 dialect. Managed database providers
+    such as Render hand out driverless connection strings, so engine
+    construction rewrites only that scheme: explicit ``+psycopg``/
+    ``+psycopg2`` URLs and other backends pass through unchanged.
+    """
+    return re.sub(r"^postgres(?:ql)?://", "postgresql+psycopg://", url, count=1, flags=re.IGNORECASE)
+
+
 # Alias for Annotated dependency declarations (FastAPI skill convention).
 DbSessionDep = Annotated[Session, Depends(get_db)]
 
@@ -215,6 +227,7 @@ __all__ = [
     "make_engine",
     "make_session_factory",
     "make_worker_session_factory",
+    "normalize_postgres_url",
     "request_transaction",
     "worker_transaction",
 ]

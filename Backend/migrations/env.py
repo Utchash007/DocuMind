@@ -29,6 +29,7 @@ if str(_BACKEND_DIR) not in sys.path:
 
 from app.db.base import Base  # noqa: E402
 from app.db import models  # noqa: E402, F401  (registers all tables)
+from app.db.session import normalize_postgres_url  # noqa: E402
 
 config = context.config
 
@@ -53,7 +54,7 @@ def _environment_name() -> str:
 
 
 def _database_url() -> str:
-    """Resolve the online URL, failing closed when it is not configured."""
+    """Resolve the online URL, failing closed; driverless PostgreSQL URLs are normalized onto psycopg 3."""
     env_name = _environment_name()
     variable = "TEST_DATABASE_URL" if env_name == "test" else "DATABASE_URL"
     url = os.environ.get(variable, "").strip()
@@ -62,7 +63,7 @@ def _database_url() -> str:
             f"{variable} is required for Alembic environment {env_name!r} "
             "but is not set. Refusing to fall back to another database URL."
         )
-    return url
+    return normalize_postgres_url(url)
 
 
 def run_migrations_offline() -> None:

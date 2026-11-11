@@ -1,6 +1,6 @@
 # Backend Python reference
 
-**53 Python files · 387 explicitly defined functions and methods.** This reference mirrors `Backend/` and describes the current implementation, including private helpers, nested functions, properties, protocol declarations, package initializers, and both migration files.
+**53 Python files · 388 explicitly defined functions and methods.** This reference mirrors `Backend/` and describes the current implementation, including private helpers, nested functions, properties, protocol declarations, package initializers, and both migration files.
 
 For example, `Backend/app/rag/generation.py` is documented in [app/rag/generation.md](app/rag/generation.md).
 
@@ -109,7 +109,7 @@ Counts include explicitly defined methods, property getters, nested functions, a
 | [app/db/base.py](app/db/base.md) | 4 |
 | [app/db/models.py](app/db/models.md) | 1 |
 | [app/db/queries.py](app/db/queries.md) | 5 |
-| [app/db/session.py](app/db/session.md) | 10 |
+| [app/db/session.py](app/db/session.md) | 11 |
 | [app/jobs/__init__.py](app/jobs/__init__.md) | 0 |
 | [app/jobs/errors.py](app/jobs/errors.md) | 5 |
 | [app/jobs/ports.py](app/jobs/ports.md) | 12 |

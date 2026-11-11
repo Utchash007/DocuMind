@@ -122,6 +122,34 @@ Open [localhost:3000/sign-in](http://localhost:3000/sign-in), sign in with an em
 
 The backend exposes [interactive docs](http://localhost:8000/docs), [ReDoc](http://localhost:8000/redoc), and [OpenAPI JSON](http://localhost:8000/openapi.json). These are direct-backend URLs; the Next.js `/api/backend` proxy does not expose the documentation routes.
 
+## 4b. Run the same stack with containers
+
+Instead of the three terminals, build the two images and start the stack from the repository root:
+
+```powershell
+docker compose build
+docker compose run --rm backend alembic upgrade head
+docker compose up -d
+```
+
+| Service | Address | Notes |
+| --- | --- | --- |
+| `frontend` | [localhost:3000](http://localhost:3000) | Only published port; the browser never talks to the API directly |
+| `backend` | `http://backend:8000` | Reachable from the frontend over the internal network only |
+| `worker` | none | Same image as the API, runs `python -m app.workers.pdf_worker` |
+| `postgres` | `postgres:5432` | Optional, enabled with `--profile local-db` |
+
+Configuration is read from the repository-root `.env`, so the same file drives the containers and the local processes. Server-only values are injected at runtime; `NEXT_PUBLIC_*` values are baked into the frontend image at build time, so rebuild the image after changing them.
+
+To add New Relic, put the license key in the root `.env` and restart the stack:
+
+```dotenv
+NEW_RELIC_LICENSE_KEY=<your license key>
+NEW_RELIC_ENVIRONMENT=development
+```
+
+The agents stay off while the key is empty. With a key set, the API, the worker, and the Next.js server report to New Relic, and the trace context is propagated across the internal proxy.
+
 ## Check startup and troubleshoot
 
 Visit [localhost:8000/health](http://localhost:8000/health). It returns `status: "healthy"` plus configuration-presence flags. This is a liveness check, not a database or provider connectivity check; `CHROMA_HOST` affects only its Chroma flag. The actual Chroma Cloud connection uses the API key, tenant, and database.

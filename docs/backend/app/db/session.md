@@ -2,7 +2,7 @@
 
 [Source](../../../../Backend/app/db/session.py) · [Backend index](../../README.md)
 
-Builds synchronous SQLAlchemy engines/sessions lazily and provides short transaction boundaries. `_FACTORY_CACHE` is keyed **only by URL**. `ENV_DEFAULT` is `"default"`; `ENV_TEST` is `"test"`. `DbSessionDep` is `Annotated[Session, Depends(get_db)]`.
+Builds synchronous SQLAlchemy engines/sessions lazily and provides short transaction boundaries. `_FACTORY_CACHE` is keyed **only by URL**. `ENV_DEFAULT` is `"default"`; `ENV_TEST` is `"test"`. `DbSessionDep` is `Annotated[Session, Depends(get_db)]`. `normalize_postgres_url` rewrites a driverless `postgresql://`/`postgres://` scheme onto the installed `postgresql+psycopg://` dialect before engine creation, because managed database providers such as Render hand out driverless connection strings.
 
 ## Functions
 
@@ -192,7 +192,7 @@ Builds synchronous SQLAlchemy engines/sessions lazily and provides short transac
 
 - **Arguments:** Optional explicit URL; otherwise `environment` chooses the environment variable.
 - **Returns:** A new synchronous SQLAlchemy engine.
-- **Work:** Calls `create_engine` with `pool_pre_ping=True` and `future=True`. Pool connections are acquired when used. An explicitly supplied URL bypasses environment lookup and its target validation.
+- **Work:** Normalizes the resolved URL with `normalize_postgres_url`, then calls `create_engine` with `pool_pre_ping=True` and `future=True`. Pool connections are acquired when used. An explicitly supplied URL bypasses environment lookup and its target validation.
 
 <!-- BEGIN LINE WALKTHROUGH -->
 <a id="walk-make-engine"></a>
@@ -214,8 +214,8 @@ Builds synchronous SQLAlchemy engines/sessions lazily and provides short transac
 
 ```text
   86 | def make_engine(database_url: str | None = None, *, environment: str | None = None) -> Engine:
-  87 |     """Create a synchronous SQLAlchemy engine for PostgreSQL (psycopg)."""
-  88 |     url = database_url or get_database_url(environment)
+  87 |     """Create a synchronous SQLAlchemy engine for PostgreSQL (psycopg); driverless URLs are normalized onto psycopg 3."""
+  88 |     url = normalize_postgres_url(database_url or get_database_url(environment))
   89 |     return create_engine(
   90 |         url,
   91 |         pool_pre_ping=True,  # tolerate idle/balancer-dropped connections
@@ -229,7 +229,7 @@ Builds synchronous SQLAlchemy engines/sessions lazily and provides short transac
 | --- | --- |
 | L86 | Define `make_engine`; bind its arguments when called. The body executes only when invoked. |
 | L87 | Function docstring: descriptive metadata, not an executed processing step. The walkthrough follows the executable body when older wording differs. |
-| L88 | Evaluate the right-hand side, then bind/store it in `url`: evaluate `database_url or get_database_url(environment)` left-to-right with short-circuit OR: use the first truthy operand, otherwise the last; the result is an operand value, not necessarily a bool. |
+| L88 | Evaluate the right-hand side, then bind/store it in `url`: `normalize_postgres_url(database_url or get_database_url(environment))` — Call [normalize_postgres_url](#walk-normalize-postgres-url) with the shown inputs; its own walkthrough describes the delegated branches, side effects, and result. |
 | L89 | Compute the return value: `create_engine(url, pool_pre_ping=True, future=True)` — Construct a synchronous SQLAlchemy engine/pool; ordinary connection checkout happens later. Return that value and end this call; enclosing finally/context-manager cleanup still runs before control reaches the caller. |
 | L90 | Supply positional argument 1 to `create_engine`: the current `url` value. |
 | L91 | Supply `pool_pre_ping` = `True`.  Evaluate the value as: `True`. |
@@ -624,3 +624,53 @@ No parameters.
 | L202 | yield `session` to the caller and suspend until the generator is resumed or closed. |
 
 <!-- END LINE WALKTHROUGH -->
+
+### `normalize_postgres_url(url: str) -> str`
+
+- **Arguments:** `url`, a SQLAlchemy connection URL.
+- **Returns:** The URL with a driverless `postgresql://`/`postgres://` scheme rewritten to `postgresql+psycopg://`; otherwise the input unchanged.
+- **Work:** Rewrites only the scheme with a single anchored, case-insensitive substitution. URLs that already name a driver (`+psycopg`, `+psycopg2`) do not match the pattern because `://` must immediately follow the backend name, and non-PostgreSQL backends are left untouched. Managed database providers such as Render hand out driverless connection strings; without this rewrite `create_engine` would try to import the psycopg2 dialect, which this project does not install. Both the API/worker engines and Alembic normalize through this helper.
+
+<!-- BEGIN LINE WALKTHROUGH -->
+<a id="walk-normalize-postgres-url"></a>
+
+#### Line-by-line execution
+
+[Current source: lines 205–214](../../../../Backend/app/db/session.py#L205-L214). Line numbers below are file line numbers, not a separate example.
+
+**Parameters and binding**
+
+| Parameter | Type / default | Meaning |
+| --- | --- | --- |
+| `url` | `str`; required; positional or keyword | Connection URL whose scheme is normalized before engine creation. |
+
+**Declared result:** `str`. The overview above explains the returned value and failure cases.
+
+**Numbered source**
+
+```text
+ 205 | def normalize_postgres_url(url: str) -> str:
+ 206 |     """Map a driverless PostgreSQL URL onto the installed psycopg 3 dialect.
+ 207 | 
+ 208 |     SQLAlchemy resolves the bare ``postgresql://``/``postgres://`` scheme to
+ 209 |     the (not installed here) psycopg2 dialect. Managed database providers
+ 210 |     such as Render hand out driverless connection strings, so engine
+ 211 |     construction rewrites only that scheme: explicit ``+psycopg``/
+ 212 |     ``+psycopg2`` URLs and other backends pass through unchanged.
+ 213 |     """
+ 214 |     return re.sub(r"^postgres(?:ql)?://", "postgresql+psycopg://", url, count=1, flags=re.IGNORECASE)
+```
+
+**What each line does** (blank lines are visual separators)
+
+| Line | Detailed operation |
+| --- | --- |
+| L205 | Define `normalize_postgres_url`; bind its arguments when called. The body executes only when invoked. |
+| L206 | Function docstring: descriptive metadata, not an executed processing step. The walkthrough follows the executable body when older wording differs. |
+| L208 | Continuation of the function's docstring; no branch, assignment, or provider/database operation executes on this line. |
+| L209 | Continuation of the function's docstring; no branch, assignment, or provider/database operation executes on this line. |
+| L210 | Continuation of the function's docstring; no branch, assignment, or provider/database operation executes on this line. |
+| L211 | Continuation of the function's docstring; no branch, assignment, or provider/database operation executes on this line. |
+| L212 | Continuation of the function's docstring; no branch, assignment, or provider/database operation executes on this line. |
+| L213 | Continuation of the function's docstring; no branch, assignment, or provider/database operation executes on this line. |
+| L214 | Compute the return value: `re.sub(r'^postgres(?:ql)?://', 'postgresql+psycopg://', url, count=1, flags=re.IGNORECASE)` — Substitute the first pattern match (case-insensitive) with the replacement text and return the rewritten string. |
