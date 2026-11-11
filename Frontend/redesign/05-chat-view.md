@@ -1,6 +1,6 @@
 # Step 5 — Chat View
 
-Goal: implement the ChatGPT-style chat from `Wirframes/chat_wireframe.md` (mockup: `Wirframes/chat.html`) — fullscreen, no sidebar — with a compound `Composer`, explicit message variants, citation chips, and a working query round-trip.
+Goal: implement the ChatGPT-style chat described below — fullscreen, no sidebar — with a compound `Composer`, explicit message variants, citation chips, and a working query round-trip.
 
 ## 5.1 Chat service — `src/services/chat.ts` (full file)
 
@@ -453,4 +453,4 @@ export default async function ScopedChatPage({
 - [ ] Send button disabled while empty or sending; error produces an inline assistant error message
 - [ ] List auto-scrolls on new messages, but not after you scroll up
 - [ ] `Composer.Input` holds no local state; everything flows through `useChat()`
-- [ ] Visually matches `Wirframes/chat.html`
+- [ ] Follows the fullscreen chat layout described here

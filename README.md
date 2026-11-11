@@ -1,4 +1,6 @@
-# 🧠 DocuMind: AI-Powered Document Question Answering (Hybrid RAG)
+# <img src="Frontend/src/app/icon.svg" alt="NoteMind logo" width="36" height="36"> DocuMind
+
+A PDF research app that answers questions with supporting passages and links to the source pages.
 
 ![Next.js](https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
@@ -7,161 +9,109 @@
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwindcss&logoColor=white)
 ![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black)
 
-DocuMind is an AI-powered document query system that provides page-level citations and exact sentence references from uploaded PDF files, similar to NotebookLM. It uses a hybrid retrieval pipeline combining semantic vector search and keyword matching.
+The web interface is called **NoteMind**. Sign in with an email code, organize PDFs into projects, ask questions across each project's sources, and keep your findings as notes or Markdown exports. **DocuMind** is the repository and backend API name.
 
-The **NoteMind** frontend organizes research into browser-saved notebooks, with required Appwrite email-code sign-in. Each notebook has its own PDF sources, conversation, editable notes, and Markdown export. It implements the [NoteMind UX wireframe](notemind-ux-wireframe.md) using shadcn/ui and the [Chalk theme](https://tweakcn.com/r/themes/cmmjgn9pc000404lg7c2q0fl6). See [Frontend/README.md](Frontend/README.md) for routes, architecture, and verification.
+> [!NOTE]
+> **Development status:** the v2 workspace is implemented; live end-to-end and production deployment verification remain outstanding. Running it requires PostgreSQL and configured cloud services. A project license file is not currently included.
 
----
+## Why DocuMind?
 
-## 📁 Repository Structure
+For developers who want to run and inspect a document-research application, DocuMind exposes the retrieval, citation, storage, and authentication code behind the workspace.
 
-```text
-DocuMind/
-├── Frontend/           # NoteMind: Next.js, shadcn/ui, Zustand, and Playwright checks
-├── Backend/            # FastAPI, PDF/retrieval utilities, and focused API checks
-├── .env                # Backend provider configuration
-├── .gitignore          # Git exclusion rules
-└── README.md           # Project documentation
-```
+- **Trace answers to the PDF.** Citation passages and page numbers come from matched source text; click a citation to inspect the passage or open its PDF page.
+- **Search by meaning and keywords.** Hybrid retrieval combines semantic search with BM25 keyword scoring, using only ready documents in the current account-owned project.
+- **Keep research together.** Projects hold sources and multiple conversations. Save answers as editable notes, generate study guides, and export your work as Markdown.
+- **Process PDFs in the background.** A separate worker handles indexing and retryable jobs; processing state is stored in PostgreSQL.
 
----
+The trade-off is operating a frontend, API, worker, and external services. Uploads support PDFs with extractable text, up to **25 MiB and 200 pages**. OCR, other upload formats, and collaborative sharing are not implemented. Notes are saved on the current device; answers arrive as complete responses rather than a token stream.
 
-## ⚙️ Setup & Installation
+## Get started
 
-### 1. Environment Configuration
+You'll need:
 
-Create a `.env` file in the root of the project (if not already present) with the following parameters:
+- **Node.js 24+ (64-bit)** with npm; **Python 3.11+** with venv and pip.
+- **PostgreSQL** for application data and processing jobs.
+- **Appwrite** for email-code authentication and private PDF storage.
+- **Chroma Cloud**, **Groq**, and **Hugging Face or Jina AI** for retrieval and answers.
 
-```env
-# Large Language Model Providers
-GROQ_API_KEY="your_groq_api_key"
-
-# Hosted Vector Database Setup (Chroma Cloud)
-CHROMA_HOST="api.trychroma.com"
-CHROMA_API_KEY="your_chroma_api_key"
-CHROMA_TENANT="your_chroma_tenant_id"
-CHROMA_DATABASE="Documind"
-
-# Hugging Face API (For Embeddings)
-HF_API_KEY="your_hugging_face_token"
-```
-
----
-
-### 2. Backend Setup (FastAPI)
-
-1. Navigate to the `Backend` directory:
-   ```bash
-   cd Backend
-   ```
-
-2. Create a virtual environment:
-   ```bash
-   python -m venv .venv
-   ```
-
-3. Activate the virtual environment:
-   - **Windows (PowerShell)**:
-     ```powershell
-     .venv\Scripts\Activate.ps1
-     ```
-   - **macOS / Linux**:
-     ```bash
-     source .venv/bin/activate
-     ```
-
-4. Install the required dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-5. Start the FastAPI development server:
-   ```bash
-   python -m uvicorn app.main:app --port 8000 --reload
-   ```
-
-The backend API will be available at [http://localhost:8000](http://localhost:8000). You can verify its status by visiting [http://localhost:8000/health](http://localhost:8000/health).
-
-`/health` reports configuration presence, not provider connectivity. Chroma connections use the cloud API key, tenant, and database; `CHROMA_HOST` is a legacy health flag. Embeddings fall back to deterministic mock vectors when Hugging Face is unavailable, so that fallback does not establish semantic retrieval quality.
-
----
-
-### 3. Frontend Setup (Next.js)
-
-1. Navigate to the `Frontend` directory:
-   ```bash
-   cd Frontend
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Copy `Frontend/.env.example` to `Frontend/.env.local`, or merge these settings into an existing file:
-   ```env
-   BACKEND_URL=http://127.0.0.1:8000
-   NEXT_PUBLIC_API_BASE_URL=/api/backend
-   NEXT_PUBLIC_APPWRITE_ENDPOINT=https://<REGION>.cloud.appwrite.io/v1
-   NEXT_PUBLIC_APPWRITE_PROJECT_ID=your-project-id
-   ```
-
-4. Start the Next.js development server:
-   ```bash
-   npm run dev
-   ```
-
-The notebook library is available at [http://localhost:3000](http://localhost:3000) after email-code sign-in at [http://localhost:3000/sign-in](http://localhost:3000/sign-in). Library and notebook links redirect to sign-in when there is no authenticated account. Enable **Email OTP** and register the website hostname as a Web platform in Appwrite. Use the project’s actual endpoint and ID; both settings are required, are public, and require a rebuild when changed. No Appwrite API key is needed. See the [Appwrite setup guide](Frontend/README.md#appwrite-email-code-authentication). Application npm scripts run from `Frontend/`; the root npm manifest is for tooling.
-
-Notebook organization, conversations, and notes live in browser local storage and are accessible in the workspace after signing in. Signing out closes access and cancels pending browser requests; saved data is preserved across account changes and sign-out. Notebooks do not sync across devices or become account-scoped. Appwrite manages account sessions; the FastAPI/proxy API and its PDFs remain deployment-wide without Appwrite authorization. PDFs and indexed chunks live on the backend, and **Share** exports Markdown rather than creating a collaborative link.
-
----
-
-## API contract
-
-FastAPI's interactive documentation is available at [localhost:8000/docs](http://localhost:8000/docs).
-
-| Endpoint | Request | Response |
-| --- | --- | --- |
-| `GET /health` | None | Status and configuration-presence flags |
-| `GET /files` | None | `{ "files": ["research.pdf"] }` |
-| `GET /files/{filename}` | URL-encoded PDF filename; optional `Range` header | Original PDF served inline, with byte-range support |
-| `POST /upload` | Multipart `file` containing a text-bearing PDF | `{ "message": "...", "chunks_count": 2 }` |
-| `POST /query` | Form field `query`, and either `filename` or repeated `filenames` fields | Answer with sentence, page, and filename citations |
-
-Example multi-source request from PowerShell:
+From the repository root in **PowerShell**, create the local configuration files if they don't exist:
 
 ```powershell
-curl.exe http://localhost:8000/query -F "query=What are the key findings?" -F "filenames=research.pdf" -F "filenames=notes.pdf"
+if (-not (Test-Path .env)) { Copy-Item Backend/.env.example .env }
+if (-not (Test-Path Frontend/.env.local)) { Copy-Item Frontend/.env.example Frontend/.env.local }
 ```
 
-```json
-{
-  "answer": "The key findings are...",
-  "citations": [
-    { "sentence": "A supporting sentence from the source.", "page": 2, "filename": "research.pdf" }
-  ]
-}
+**Continue with the [local setup guide](docs/getting-started.md)** to fill in credentials, install dependencies, migrate your chosen database, and start all three processes. It includes PowerShell and macOS/Linux commands. Application npm commands run from `Frontend/`.
+
+Once running, open [localhost:3000](http://localhost:3000). Interactive API documentation is at [localhost:8000/docs](http://localhost:8000/docs).
+
+## Your first research session
+
+1. **Sign in** with the code sent to your email and complete your profile.
+2. **Create a project** and upload a text-bearing PDF. Wait for its status to become **Ready**.
+3. **Ask a question**, such as “What are the main findings, and which pages support them?”
+4. **Inspect the citations** to read the supporting passages and open the original pages.
+5. **Save a useful answer as a note**, or choose **Export** to copy or download Markdown.
+
+Projects and conversations persist on the server. Editable notes and drafts use account-scoped browser storage and do not sync across devices; clearing browser data removes them.
+
+## How it works
+
+```text
+NoteMind browser UI
+    │
+    ▼
+Next.js ── Appwrite email sign-in and session cookie
+    │ session-bound JWT through /api/backend
+    ▼
+FastAPI ── PostgreSQL: projects, documents, conversations, jobs
+    │
+    ├── Private PDFs ── Appwrite Storage
+    ├── PDF worker ── page-bound text ── embeddings ── Chroma Cloud
+    └── Questions ── hybrid retrieval ── Groq ── answer + citations
 ```
 
-Both retrieval paths use the selected source filter. The backend keeps legacy all-document queries when both filename fields are omitted; the notebook UI always sends its sources and prevents queries on empty notebooks. Page numbers are one-based, and citation metadata comes from the matched source chunk.
+The API verifies identity and resource ownership. Uploads return a document and job; the worker publishes a versioned index before the document becomes ready. Both retrieval paths use the same authorized document/version pairs, combine their scores equally, and send the top four chunks to Groq. Conversation history supplies context; PDF text supplies citation evidence.
 
-Filenames are source identities shared across this API deployment. Re-uploading a filename replaces its contents and removes stale chunks after indexing. Files are staged during processing, so rejected PDFs and embedding/indexing failures do not delete the existing PDF. Removing a notebook or its source association in the frontend does not delete backend files.
+The default embedding model is Hugging Face's `sentence-transformers/all-MiniLM-L6-v2` (384 dimensions); Jina AI is an alternative (1024 dimensions). Answer generation uses Groq's `openai/gpt-oss-120b` through Instructor. Provider failures surface as errors or retryable jobs; mock embeddings require explicit development opt-in.
 
-## Checks
+Original PDFs live in Appwrite Storage, extracted text and vectors in Chroma, and retrieved passages are sent to the answer provider. See the [backend walkthrough](docs/backend/README.md#architecture-and-suggested-reading-order) for the implementation.
 
-From `Frontend/`, run `npm run lint`, `npx tsc --noEmit --incremental false`, and `npm run build`. After installing Chromium with `npx playwright install chromium`, run `npm run test:e2e` for authentication and notebook workflows. The runner builds with a local mocked Appwrite endpoint and uses an isolated PDF API fixture; see the [frontend verification guide](Frontend/README.md#verification). Rebuild with your own environment before serving a normal production build.
+## Technology stack
 
-From `Backend/`, run `.\.venv\Scripts\python.exe -m unittest discover -s tests -v` for source filtering, upload replacement/error behavior, PDF serving, and citation/page checks. The automated checks substitute external providers and do not validate live Groq, Chroma Cloud, or Hugging Face connectivity.
-
----
-
-## 🛠️ Technology Stack
-
-| Component | Technology | Badge |
+| Layer | Technology | Logos |
 | --- | --- | --- |
-| **Frontend** | Next.js 16, React 19, Tailwind CSS 4, shadcn/ui, Zustand, TypeScript | ![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat-square&logo=nextdotjs&logoColor=white) ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=flat-square&logo=tailwindcss&logoColor=white) ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white) |
-| **Backend** | FastAPI, Python 3, Uvicorn | ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white) ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white) |
-| **LLMs / Orchestration** | Groq API, `instructor`, Pydantic | ![Groq](https://img.shields.io/badge/Groq-F55036?style=flat-square&logo=groq&logoColor=white) ![Pydantic](https://img.shields.io/badge/Pydantic-E92063?style=flat-square&logo=pydantic&logoColor=white) |
-| **Embeddings** | Hugging Face Inference API | ![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-FFD21E?style=flat-square) |
-| **Vector DB** | Chroma DB (Hosted Database) | ![ChromaDB](https://img.shields.io/badge/ChromaDB-0078D4?style=flat-square) |
+| **Frontend** | Next.js 16, React 19, TypeScript, Tailwind CSS 4, shadcn/ui, Zustand | ![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat-square&logo=nextdotjs&logoColor=white) ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=flat-square&logo=tailwindcss&logoColor=white) ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white) |
+| **API** | FastAPI, Python, Uvicorn, Pydantic | ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white) ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white) |
+| **Application data** | PostgreSQL, SQLAlchemy 2, Alembic, psycopg | ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) |
+| **Authentication and files** | Appwrite Auth, private Appwrite Storage, server-side Node SDK | ![Appwrite](https://img.shields.io/badge/Appwrite-FD366E?style=flat-square&logo=appwrite&logoColor=white) |
+| **Answers** | Groq API, Instructor, Pydantic | ![Groq](https://img.shields.io/badge/Groq-F55036?style=flat-square&logo=groq&logoColor=white) ![Pydantic](https://img.shields.io/badge/Pydantic-E92063?style=flat-square&logo=pydantic&logoColor=white) |
+| **Embeddings** | Hugging Face Inference API or Jina AI | ![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-FFD21E?style=flat-square) |
+| **Vector search** | Chroma Cloud, combined with BM25 keyword retrieval | ![ChromaDB](https://img.shields.io/badge/ChromaDB-0078D4?style=flat-square) |
+
+## Development and verification
+
+From `Frontend/`:
+
+```powershell
+npm run lint
+npm run build
+npx tsc --noEmit --incremental false
+```
+
+Project tests, fixtures, and test runners were retired on **2026-11-11**. Current checks are frontend lint/type/build checks and backend syntax/reference validation. A fresh service-backed installation, PostgreSQL migration/concurrency/durability, live authentication/storage/model integrations, and worker supervision remain unverified.
+
+The application is **v2-only**. Filename-based APIs, browser imports, and `/notebooks/[id]` compatibility routes have been removed. Old browser data is not read or automatically deleted, and unresolved legacy citations have no automatic repair path.
+
+## Documentation and code map
+
+The repository keeps `Backend/`, `Frontend/`, `docs/`, `README.md`, and `.gitignore` at the root. Other root files and folders are local-only and ignored by Git.
+
+| Start here | What you'll find |
+| --- | --- |
+| [Local setup](docs/getting-started.md) | Service configuration, installation, startup, troubleshooting, and an API request example |
+| [Frontend guide](Frontend/README.md) | Authentication, routes, interactions, state, and frontend verification |
+| [Backend reference](docs/backend/README.md) | Per-file and per-function explanations with numbered Python source |
+| [HTTP handlers](docs/backend/README.md#architecture-and-suggested-reading-order) and [TypeScript API types](Frontend/src/lib/api-types.ts) | Resource endpoints, response shapes, and ownership boundaries |
+| [Frontend source](Frontend/src) and [backend source](Backend/app) | The Next.js interface and FastAPI/worker implementation |
+| [UI styles](Frontend/src/app/globals.css) | NoteMind's theme tokens and shared styles |

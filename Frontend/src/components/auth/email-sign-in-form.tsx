@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 const RESEND_DELAY = 60_000;
 
 export function EmailSignInForm() {
-  const { state, actions, meta } = useAuth();
+  const { state, actions } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -72,11 +72,11 @@ export function EmailSignInForm() {
     setError(null);
     setNotice("");
     try {
-      const signedIn = await actions.signIn(challenge.userId, code);
+      const appUser = await actions.signIn(challenge.userId, code);
       setCode("");
-      if (signedIn) {
+      if (appUser) {
         setChallenge(null);
-        if (active.current) router.replace("/");
+        if (active.current) router.replace(appUser.onboardingCompleted ? "/" : "/onboarding");
       }
     } catch (error) {
       setError(authErrorMessage(error));
@@ -103,11 +103,9 @@ export function EmailSignInForm() {
       ) : state.user ? (
         <div className="space-y-4 text-center">
           <p className="text-sm text-muted-foreground">Signed in as <span className="block break-all font-medium text-foreground">{state.user.email}</span></p>
-          <Button asChild className="h-11 w-full justify-between px-4"><Link href="/">Continue to notebooks<ArrowRight /></Link></Button>
-          <p className="text-xs leading-5 text-muted-foreground">Your notebooks are saved in this browser.</p>
+          <Button asChild className="h-11 w-full justify-between px-4"><Link href={state.appUser && !state.appUser.onboardingCompleted ? "/onboarding" : "/"}>Continue to projects<ArrowRight /></Link></Button>
+          <p className="text-xs leading-5 text-muted-foreground">Projects are saved to your account. Editable notes stay on this device.</p>
         </div>
-      ) : !meta.configured ? (
-        <p role="status" className="rounded-lg border bg-muted/40 p-4 text-center text-sm leading-6 text-muted-foreground">Sign-in is required to access your notebooks. Email sign-in is not configured yet. See <Link href="/help#sign-in" className="underline underline-offset-2">sign-in setup</Link> to enable access.</p>
       ) : (
         <div className="space-y-4">
           {challenge ? (

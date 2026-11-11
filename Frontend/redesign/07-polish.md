@@ -88,4 +88,4 @@ Run the backend (`uvicorn app.main:app --port 8000`) and frontend (`npm run dev`
 
 ## Definition of done
 
-A user can upload a PDF, see it as a dashboard card, chat about it with exact page-level citations, and navigate everything from the sidebar — with zero hardcoded URLs, zero mock data, all checklists above ticked, and every component matching the wireframes in `Wirframes/`.
+A user can upload a PDF, see it as a dashboard card, chat about it with exact page-level citations, and navigate everything from the sidebar — with zero hardcoded URLs, zero mock data, all checklists above ticked, and every component following the layout descriptions in these guides.

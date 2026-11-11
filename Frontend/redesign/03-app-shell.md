@@ -1,6 +1,6 @@
 # Step 3 — App Shell: Route Groups + Sidebar
 
-Goal: replace the single-page layout with real routes wrapped in a persistent shell containing the redesigned sidebar (per `Wirframes/sidebar.md` / `sidebar.html`).
+Goal: replace the single-page layout with real routes wrapped in a persistent shell containing the redesigned sidebar described below.
 
 ## 3.1 Root layout — `src/app/layout.tsx` (full file)
 
@@ -217,6 +217,6 @@ export default function ChatsPage() {
 ## Acceptance criteria
 
 - [ ] `/` renders sidebar + stub dashboard; `/documents`, `/notes`, `/settings`, `/help` navigate with the accent bar following the active route
-- [ ] Sidebar visually matches `Wirframes/sidebar.html` (brand tile, dividers, bottom-pinned profile)
+- [ ] Sidebar follows the layout described here: brand tile, dividers, and bottom-pinned profile
 - [ ] `Sidebar` is the only `"use client"` component added in this step
 - [ ] Old `src/app/page.tsx` is deleted

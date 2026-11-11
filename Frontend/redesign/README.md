@@ -1,8 +1,8 @@
 # DocuMind Frontend Redesign — Step-by-Step Guide
 
-> These guides describe the earlier redesign plan. The implemented NoteMind workspace requires email-code sign-in and follows [`notemind-ux-wireframe.md`](../../notemind-ux-wireframe.md) and the Chalk shadcn/ui theme. See the [current frontend README](../README.md) for implemented routes, data flow, and checks.
+> These guides describe the earlier redesign plan. The implemented NoteMind workspace requires email-code sign-in and uses the Chalk shadcn/ui theme. See the [current frontend README](../README.md) for implemented routes, data flow, and checks.
 
-This folder is a numbered, hands-on guide for redesigning the DocuMind frontend from the current single-file monolith into a properly structured Next.js App Router application that implements the approved wireframes and navy palette.
+This folder preserves the numbered guide for redesigning the earlier single-file DocuMind frontend into a structured Next.js App Router application with a navy palette.
 
 ## Read in this order
 
@@ -23,10 +23,10 @@ This folder is a numbered, hands-on guide for redesigning the DocuMind frontend 
 - No component directory, no state library, no design tokens — inline Tailwind classes everywhere.
 - No routing: upload, document selection, and chat are all one page.
 
-## Target design sources
+## Historical design sources
 
-- Wireframes: `../Wirframes/dashboard_wireframe.md`, `sidebar.md`, `top_card.md`, `bottom_card.md`, `chat_wireframe.md`
-- Approved HTML mockups: `../Wirframes/sidebar.html`, `dashboard.html`, `chat.html`, `top_card.html`
+The original `Wirframes/` directory, including its wireframes and HTML mockups, was removed on 2026-11-11. The layout descriptions in these guides remain as historical material.
+
 - Palette: `#F1F6F9` (light) `#394867` (slate) `#212A3E` (navy) `#9BA4B5` (bluegray)
 
 ## Rules that apply to every step

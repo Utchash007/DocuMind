@@ -1,11 +1,13 @@
 "use client";
 
 import { createContext, use, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import type { ApplicationUser } from "@/lib/api-types";
 import type { AuthUser } from "@/lib/types";
-import { authConfigured, authErrorMessage, createEmailCodeSession, deleteCurrentSession, fetchCurrentUser } from "@/services/auth/auth";
+import { authErrorMessage, createEmailCodeSession, deleteCurrentSession, fetchSessionContext } from "@/services/auth/auth";
 
 interface AuthState {
   user: AuthUser | null;
+  appUser: ApplicationUser | null;
   loading: boolean;
   error: string | null;
 }
@@ -14,25 +16,26 @@ interface AuthContextValue {
   state: AuthState;
   actions: {
     refreshSession: () => Promise<void>;
-    signIn: (userId: string, code: string) => Promise<boolean>;
+    signIn: (userId: string, code: string) => Promise<ApplicationUser | null>;
     signOut: () => Promise<void>;
   };
-  meta: { configured: boolean };
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AuthState>({ user: null, loading: authConfigured, error: null });
+  // Appwrite configuration is validated by the server. Always restore the
+  // session, including deployments with only server-side environment values.
+  const [state, setState] = useState<AuthState>({ user: null, appUser: null, loading: true, error: null });
   const generation = useRef(0);
   const mutating = useRef(false);
 
   const loadSession = useCallback(async () => {
     const request = ++generation.current;
     try {
-      const user = await fetchCurrentUser();
-      if (request === generation.current) setState({ user, loading: false, error: null });
-      return user;
+      const context = await fetchSessionContext();
+      if (request === generation.current) setState({ user: context.user, appUser: context.appUser, loading: false, error: null });
+      return context;
     } catch (error) {
       if (request === generation.current) setState((current) => ({ ...current, loading: false, error: authErrorMessage(error) }));
       return null;
@@ -40,11 +43,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshSession = useCallback(async () => {
-    if (authConfigured && !mutating.current) await loadSession();
+    if (!mutating.current) await loadSession();
   }, [loadSession]);
 
   useEffect(() => {
-    if (!authConfigured) return;
     void refreshSession();
     const onFocus = () => { void refreshSession(); };
     window.addEventListener("focus", onFocus);
@@ -55,14 +57,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refreshSession]);
 
   const signIn = useCallback(async (userId: string, code: string) => {
-    if (mutating.current) return false;
+    if (mutating.current) return null;
     mutating.current = true;
     generation.current += 1;
     try {
       await createEmailCodeSession(userId, code);
-      const user = await loadSession();
-      if (!user) setState((current) => ({ ...current, error: current.error || "Your code was accepted, but the session could not be restored. Check your session again." }));
-      return Boolean(user);
+      const context = await loadSession();
+      if (context?.user && !context.appUser) {
+        setState((current) => ({ ...current, error: current.error || "Your code was accepted, but your workspace could not be restored. Check your session again." }));
+        return null;
+      }
+      return context?.appUser ?? null;
     } finally {
       mutating.current = false;
     }
@@ -74,13 +79,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     generation.current += 1;
     try {
       await deleteCurrentSession();
-      setState({ user: null, loading: false, error: null });
+      setState({ user: null, appUser: null, loading: false, error: null });
     } finally {
       mutating.current = false;
     }
   }, []);
 
-  const value = useMemo(() => ({ state, actions: { refreshSession, signIn, signOut }, meta: { configured: authConfigured } }), [state, refreshSession, signIn, signOut]);
+  const value = useMemo(() => ({ state, actions: { refreshSession, signIn, signOut } }), [state, refreshSession, signIn, signOut]);
   return <AuthContext value={value}>{children}</AuthContext>;
 }
 

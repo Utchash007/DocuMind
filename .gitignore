@@ -1,6 +1,11 @@
-# Environment variables and secrets
-.env*
-!.env.example
+# Environment files and secrets (all directories, including uppercase variants)
+.[eE][nN][vV]*
+*.[eE][nN][vV]
+*.[eE][nN][vV].*
+[eE][nN][vV]
+# Keep env.example, .env.example, and named *.env.example templates trackable
+![eE][nN][vV].[eE][xX][aA][mM][pP][lL][eE]
+!*.[eE][nN][vV].[eE][xX][aA][mM][pP][lL][eE]
 
 # Node / Javascript
 node_modules/
@@ -41,16 +46,8 @@ var/
 .venv/
 venv/
 ENV/
-.pytest_cache/
 .mypy_cache/
 .ruff_cache/
-.tox/
-.nox/
-.coverage
-.coverage.*
-coverage/
-coverage.xml
-htmlcov/
 
 # Databases and Local Stores
 *.db
@@ -80,3 +77,11 @@ skills-lock.json
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Published root layout; other root files and folders stay local
+/*
+!/.gitignore
+!/README.md
+!/Backend/
+!/Frontend/
+!/docs/

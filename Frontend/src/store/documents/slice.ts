@@ -1,69 +1,100 @@
-import type { DocumentInfo, HealthResponse, UploadTask } from "@/lib/types";
-import { uploadFilename } from "@/lib/documents";
-import { errorMessage } from "@/services/api/api";
-import { fetchDocuments, uploadDocument } from "@/services/documents/documents";
+import type { Document, ProcessingJob } from "@/lib/api-types";
+import { projectScope } from "@/lib/projects";
+import { deleteDocument, getDocument, listDocuments, retryDocument, uploadDocument, validatePdfFile } from "@/services/projects/documents";
+import { getJob, isJobTerminal } from "@/services/projects/jobs";
 import { fetchHealth } from "@/services/health/health";
+import { isV2ApiError, newIdempotencyKey, v2ErrorMessage } from "@/services/v2http";
+import { documentsReducer, emptyDocumentsPage, type DocumentsPage } from "@/store/documents/reducer";
 import type { StoreSetter } from "@/store/types";
 import type { WorkspaceStore } from "@/store/workspace-store";
+import type { HealthResponse } from "@/lib/types";
+
+export interface UploadTaskV2 {
+  id: string;
+  projectId: string;
+  fileName: string;
+  status: "waiting" | "uploading" | "processing" | "done" | "error";
+  progress: number | null;
+  jobId: string | null;
+  documentId: string | null;
+  message: string | null;
+}
 
 export interface DocumentsState {
-  documents: DocumentInfo[];
-  documentsStatus: "idle" | "loading" | "ready" | "error";
-  documentsError: string | null;
+  documentsByScope: Record<string, DocumentsPage>;
+  jobsById: Record<string, ProcessingJob>;
+  uploadQueue: UploadTaskV2[];
+  isUploading: boolean;
+  uploadingProjectId: string | null;
   connectionStatus: "checking" | "connected" | "offline";
   health: HealthResponse | null;
-  uploadDialogOpen: boolean;
-  isUploading: boolean;
-  uploadQueue: UploadTask[];
-  uploadNotebookId: string | null;
 }
 
 export const initialDocumentsState: DocumentsState = {
-  documents: [],
-  documentsStatus: "idle",
-  documentsError: null,
+  documentsByScope: {},
+  jobsById: {},
+  uploadQueue: [],
+  isUploading: false,
+  uploadingProjectId: null,
   connectionStatus: "checking",
   health: null,
-  uploadDialogOpen: false,
-  isUploading: false,
-  uploadQueue: [],
-  uploadNotebookId: null,
 };
 
-type DocumentsUpdate = { type: "replace"; documents: DocumentInfo[] } | { type: "upsert"; document: DocumentInfo };
-
-function documentsReducer(documents: DocumentInfo[], action: DocumentsUpdate) {
-  if (action.type === "replace") {
-    return action.documents.map((document) => ({ ...documents.find((item) => item.filename === document.filename), ...document }));
-  }
-  return [action.document, ...documents.filter((document) => document.filename !== action.document.filename)];
-}
+const TERMINAL_DOCUMENT: ReadonlySet<Document["status"]> = new Set(["Completed", "Failed"]);
 
 export class DocumentsActions {
   readonly #set: StoreSetter<WorkspaceStore>;
   readonly #get: () => WorkspaceStore;
   readonly #requests = new Set<AbortController>();
+  readonly #pollTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  readonly #pollAttempts = new Map<string, number>();
+  readonly #pollControllers = new Map<string, AbortController>();
+  readonly #uploadControllers = new Set<AbortController>();
 
   constructor(set: StoreSetter<WorkspaceStore>, get: () => WorkspaceStore) {
     this.#set = set;
     this.#get = get;
   }
 
-  setUploadDialogOpen = (open: boolean) => this.#set({ uploadDialogOpen: open });
+  #identityNow(): { userId: string; generation: number } | null {
+    const { identity, identityGeneration } = this.#get();
+    return identity ? { userId: identity, generation: identityGeneration } : null;
+  }
 
-  refreshDocuments = async () => {
-    if (this.#get().documentsStatus === "loading" || this.#get().isUploading) return;
+  #current(generation: number): boolean {
+    return this.#get().identityGeneration === generation;
+  }
+
+  loadDocuments = async (projectId: string, options: { cursor?: string; reset?: boolean } = {}) => {
+    const identity = this.#identityNow();
+    if (!identity) return;
+    const scope = projectScope(identity.userId, projectId);
+    const previous = this.#get().documentsByScope[scope];
+    if (previous?.status === "loading" && !options.reset) return;
     const controller = new AbortController();
     this.#requests.add(controller);
-    this.#set({ documentsStatus: "loading", documentsError: null });
+    this.#set((state) => ({
+      documentsByScope: documentsReducer(state.documentsByScope, { type: "set-loading", scope }),
+    }));
     try {
-      const documents = await fetchDocuments(controller.signal);
-      if (controller.signal.aborted) return;
-      this.internal_dispatchDocuments({ type: "replace", documents });
-      this.#set({ documentsStatus: "ready", connectionStatus: "connected" });
+      const page = await listDocuments(projectId, { cursor: options.cursor, limit: 50, signal: controller.signal });
+      if (!this.#current(identity.generation) || controller.signal.aborted) return;
+      const items = options.reset || !options.cursor ? page.items : [...(previous?.items ?? []), ...page.items.filter((item) => !(previous?.items ?? []).some((existing) => existing.id === item.id))];
+      this.#set((state) => ({
+        documentsByScope: documentsReducer(state.documentsByScope, { type: "set-page", scope, page: { items, nextCursor: page.nextCursor, status: "ready", error: null } }),
+        connectionStatus: "connected",
+      }));
+      for (const document of page.items) {
+        if (!TERMINAL_DOCUMENT.has(document.status) && document.id) {
+          // Ensure a job poll is running for pending documents when we know a job id.
+          void document;
+        }
+      }
     } catch (error) {
-      if (controller.signal.aborted) return;
-      this.#set({ documentsStatus: "error", documentsError: errorMessage(error) });
+      if (!this.#current(identity.generation) || controller.signal.aborted) return;
+      this.#set((state) => ({
+        documentsByScope: documentsReducer(state.documentsByScope, { type: "set-error", scope, error: v2ErrorMessage(error) }),
+      }));
     } finally {
       this.#requests.delete(controller);
     }
@@ -85,56 +116,197 @@ export class DocumentsActions {
     }
   };
 
-  uploadDocuments = async (files: File[], notebookId: string) => {
-    if (!files.length || this.#get().isUploading || !this.#get().notebooksMap[notebookId]) return;
-    const unique = [...new Map(files.map((file) => [uploadFilename(file.name), file])).values()];
-    const uploadQueue: UploadTask[] = unique.map((file) => ({ id: crypto.randomUUID(), filename: uploadFilename(file.name), status: "waiting" }));
+  uploadDocuments = async (files: File[], projectId: string) => {
+    const identity = this.#identityNow();
+    if (!identity || !files.length || this.#get().isUploading) return;
+    const unique = [...new Map(files.map((file) => [file.name.toLowerCase(), file])).values()];
+    const tasks: UploadTaskV2[] = unique.map((file) => ({
+      id: crypto.randomUUID(), projectId, fileName: file.name, status: "waiting", progress: null, jobId: null, documentId: null, message: null,
+    }));
     const controller = new AbortController();
-    this.#requests.add(controller);
-    this.#set({ isUploading: true, uploadQueue, uploadNotebookId: notebookId });
-
+    this.#uploadControllers.add(controller);
+    this.#set({ isUploading: true, uploadingProjectId: projectId, uploadQueue: tasks });
+    const generation = identity.generation;
     try {
       for (const [index, file] of unique.entries()) {
-        if (controller.signal.aborted) return;
-        const id = uploadQueue[index].id;
-        this.internal_dispatchUpload(id, { status: "processing" });
+        if (controller.signal.aborted || !this.#current(generation)) return;
+        const taskId = tasks[index].id;
+        this.internal_dispatchUpload(taskId, { status: "uploading", message: "Uploading…" });
+        const validationError = validatePdfFile(file);
+        if (validationError) {
+          this.internal_dispatchUpload(taskId, { status: "error", message: validationError });
+          continue;
+        }
         try {
-          if (!/\.pdf$/i.test(file.name)) throw new Error("Only PDF documents are supported.");
-          if (file.size === 0) throw new Error("This file is empty. Choose a PDF with text.");
-          const document = await uploadDocument(file, controller.signal);
-          if (controller.signal.aborted) return;
-          this.internal_dispatchDocuments({ type: "upsert", document });
-          this.#get().addNotebookSources(notebookId, [document.filename]);
-          this.internal_dispatchUpload(id, { status: "done", message: `${document.chunksCount ?? 0} text chunks indexed` });
-          this.#set({ documentsStatus: "ready", documentsError: null, connectionStatus: "connected" });
+          const acceptance = await uploadDocument(projectId, file, {
+            idempotencyKey: newIdempotencyKey(),
+            signal: controller.signal,
+            onProgress: (loaded, total) => {
+              if (controller.signal.aborted || !this.#current(generation)) return;
+              this.internal_dispatchUpload(taskId, { progress: total > 0 ? Math.round((loaded / total) * 100) : null });
+            },
+          });
+          if (controller.signal.aborted || !this.#current(generation)) return;
+          const scope = projectScope(identity.userId, projectId);
+          this.#set((state) => ({
+            documentsByScope: documentsReducer(state.documentsByScope, { type: "upsert-document", scope, document: acceptance.document }),
+            jobsById: { ...state.jobsById, [acceptance.job.id]: acceptance.job },
+          }));
+          this.internal_dispatchUpload(taskId, {
+            status: "processing", progress: 100, jobId: acceptance.job.id, documentId: acceptance.document.id,
+            message: "Stored — processing in the background.",
+          });
+          this.startJobPolling(acceptance.job.id, projectId);
+          // Task completes once the job is terminal (polling updates it); mark uploaded now.
+          this.internal_dispatchUpload(taskId, { status: "done", message: "Stored — processing in the background." });
         } catch (error) {
-          if (controller.signal.aborted) return;
-          this.internal_dispatchUpload(id, { status: "error", message: errorMessage(error) });
+          if (controller.signal.aborted || !this.#current(generation)) return;
+          this.internal_dispatchUpload(taskId, { status: "error", message: v2ErrorMessage(error) });
         }
       }
     } finally {
-      this.#requests.delete(controller);
-      if (!controller.signal.aborted) this.#set({ isUploading: false });
+      this.#uploadControllers.delete(controller);
+      if (!controller.signal.aborted && this.#current(generation)) {
+        this.#set({ isUploading: false, uploadingProjectId: null });
+      }
+    }
+  };
+
+  retryDocumentTask = async (projectId: string, documentId: string) => {
+    const identity = this.#identityNow();
+    if (!identity) return;
+    const acceptance = await retryDocument(projectId, documentId);
+    if (!this.#current(identity.generation)) return;
+    const scope = projectScope(identity.userId, projectId);
+    this.#set((state) => ({
+      documentsByScope: documentsReducer(state.documentsByScope, { type: "upsert-document", scope, document: acceptance.document }),
+      jobsById: { ...state.jobsById, [acceptance.job.id]: acceptance.job },
+    }));
+    this.startJobPolling(acceptance.job.id, projectId);
+  };
+
+  deleteDocumentTask = async (projectId: string, documentId: string) => {
+    const identity = this.#identityNow();
+    if (!identity) return false;
+    const result = await deleteDocument(projectId, documentId);
+    if (!this.#current(identity.generation)) return false;
+    const scope = projectScope(identity.userId, projectId);
+    this.#set((state) => ({
+      documentsByScope: documentsReducer(state.documentsByScope, { type: "remove-document", scope, documentId }),
+    }));
+    if (result.jobId) {
+      this.#set((state) => ({ jobsById: { ...state.jobsById } }));
+      this.startJobPolling(result.jobId, projectId);
+    }
+    return true;
+  };
+
+  clearUploadQueue = () => {
+    if (!this.#get().isUploading) this.#set({ uploadQueue: [], uploadingProjectId: null });
+  };
+
+  // ---- Job polling: refresh-safe, backoff, terminal/session-loss shutdown (FE-01) ----
+
+  startJobPolling = (jobId: string, projectId: string) => {
+    const identity = this.#identityNow();
+    if (!identity || !jobId) return;
+    if (this.#pollTimers.has(jobId)) return;
+    this.#pollAttempts.set(jobId, 0);
+    this.#schedulePoll(jobId, projectId, identity.generation, 1200);
+  };
+
+  stopJobPolling = (jobId: string) => {
+    const timer = this.#pollTimers.get(jobId);
+    if (timer) clearTimeout(timer);
+    this.#pollTimers.delete(jobId);
+    this.#pollAttempts.delete(jobId);
+    this.#pollControllers.get(jobId)?.abort();
+    this.#pollControllers.delete(jobId);
+  };
+
+  #schedulePoll = (jobId: string, projectId: string, generation: number, delay: number) => {
+    if (this.#pollTimers.has(jobId)) return;
+    const timer = setTimeout(() => {
+      this.#pollTimers.delete(jobId);
+      void this.#pollStep(jobId, projectId, generation);
+    }, delay);
+    this.#pollTimers.set(jobId, timer);
+  };
+
+  #pollStep = async (jobId: string, projectId: string, generation: number) => {
+    if (!this.#current(generation) || !this.#get().identity) return; // session-loss shutdown
+    const identity = this.#identityNow();
+    if (!identity) return;
+    const controller = new AbortController();
+    this.#pollControllers.set(jobId, controller);
+    try {
+      const job = await getJob(jobId, controller.signal);
+      if (!this.#current(generation) || controller.signal.aborted) return;
+      this.#set((state) => ({ jobsById: { ...state.jobsById, [job.id]: job } }));
+      let terminal = isJobTerminal(job);
+      if (job.targetDocumentId) {
+        try {
+          const document = await getDocument(projectId, job.targetDocumentId, controller.signal);
+          if (!this.#current(generation)) return;
+          const scope = projectScope(identity.userId, projectId);
+          this.#set((state) => ({
+            documentsByScope: documentsReducer(state.documentsByScope, { type: "upsert-document", scope, document }),
+          }));
+          if (TERMINAL_DOCUMENT.has(document.status)) terminal = true;
+          // Deletion jobs tombstone the document; absence (404) is terminal too.
+        } catch (error) {
+          if (isV2ApiError(error) && error.status === 404) terminal = true;
+          else if (!isJobTerminal(job)) {
+            // Transient: reschedule with backoff.
+            const attempt = (this.#pollAttempts.get(jobId) ?? 0) + 1;
+            this.#pollAttempts.set(jobId, attempt);
+            this.#schedulePoll(jobId, projectId, generation, Math.min(2000 * 1.5 ** attempt, 15000));
+            return;
+          }
+        }
+      }
+      if (terminal) {
+        this.#pollAttempts.delete(jobId);
+        // Sync upload task message for this job.
+        const queue = this.#get().uploadQueue;
+        for (const task of queue) {
+          if (task.jobId === jobId && task.status !== "error") {
+            this.internal_dispatchUpload(task.id, {
+              status: job.status === "succeeded" ? "done" : "error",
+              message: job.status === "succeeded" ? "Processing completed." : job.lastErrorMessage || "Processing failed. You can retry this document.",
+            });
+          }
+        }
+        return;
+      }
+      const attempt = (this.#pollAttempts.get(jobId) ?? 0) + 1;
+      this.#pollAttempts.set(jobId, attempt);
+      this.#schedulePoll(jobId, projectId, generation, Math.min(2000 * 1.5 ** attempt, 15000));
+    } catch {
+      if (!this.#current(generation) || controller.signal.aborted) return;
+      const attempt = (this.#pollAttempts.get(jobId) ?? 0) + 1;
+      this.#pollAttempts.set(jobId, attempt);
+      this.#schedulePoll(jobId, projectId, generation, Math.min(2000 * 1.5 ** attempt, 15000));
+    } finally {
+      if (this.#pollControllers.get(jobId) === controller) this.#pollControllers.delete(jobId);
     }
   };
 
   internal_cancelDocumentRequests = () => {
     for (const controller of this.#requests) controller.abort();
     this.#requests.clear();
-    this.#set(initialDocumentsState);
+    for (const controller of this.#uploadControllers) controller.abort();
+    this.#uploadControllers.clear();
+    for (const jobId of [...this.#pollTimers.keys()]) this.stopJobPolling(jobId);
+    this.#set({ ...initialDocumentsState, connectionStatus: this.#get().connectionStatus === "offline" ? "offline" : "checking" });
   };
 
-  clearUploadQueue = () => {
-    if (!this.#get().isUploading) this.#set({ uploadQueue: [], uploadNotebookId: null });
-  };
+  internal_dispatchDocuments = (action: Parameters<typeof documentsReducer>[1]) =>
+    this.#set((state) => ({ documentsByScope: documentsReducer(state.documentsByScope, action) }));
 
-  internal_dispatchDocuments = (action: DocumentsUpdate) => {
-    this.#set((state) => ({ documents: documentsReducer(state.documents, action) }));
-  };
-
-  internal_dispatchUpload = (id: string, update: Partial<UploadTask>) => {
-    this.#set((state) => ({ uploadQueue: state.uploadQueue.map((task) => task.id === id ? { ...task, ...update } : task) }));
-  };
+  internal_dispatchUpload = (id: string, update: Partial<UploadTaskV2>) =>
+    this.#set((state) => ({ uploadQueue: state.uploadQueue.map((task) => (task.id === id ? { ...task, ...update } : task)) }));
 }
 
 export type DocumentsAction = Pick<DocumentsActions, keyof DocumentsActions>;
+export { emptyDocumentsPage };

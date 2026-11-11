@@ -1,6 +1,8 @@
-import { NotebookLibrary } from "@/components/library/notebook-library";
+import { ProjectLibrary } from "@/components/projects/project-library";
 import { SiteFooter } from "@/components/site-footer";
 
-export default function LibraryPage() {
-  return <div className="flex min-h-dvh flex-col"><NotebookLibrary /><SiteFooter /></div>;
+export const metadata = { title: "Your projects" };
+
+export default function ProjectsDashboardPage() {
+  return <div className="flex min-h-dvh flex-col"><ProjectLibrary /><SiteFooter /></div>;
 }

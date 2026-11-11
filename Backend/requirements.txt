@@ -8,3 +8,7 @@ httpx
 pypdf
 instructor
 python-multipart
+SQLAlchemy>=2.0.36,<3
+alembic>=1.14,<2
+psycopg[binary]>=3.2,<4
+appwrite>=13,<16

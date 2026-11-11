@@ -1,6 +1,6 @@
 # Step 4 — Dashboard Page: Cards + Documents + Upload
 
-Goal: build the dashboard grid from `Wirframes/dashboard_wireframe.md` with explicit card components (mockup: `Wirframes/dashboard.html`), plus the documents page with a working PDF upload.
+Goal: build the dashboard grid described below with explicit card components, plus the documents page with a working PDF upload.
 
 ## 4.1 Types — `src/lib/types.ts` (full file)
 
@@ -415,7 +415,7 @@ export default function DocumentsPage() {
 
 ## Acceptance criteria
 
-- [ ] Dashboard matches `Wirframes/dashboard.html`: 2 `PrimaryCard` + 2 `ContentCard`, 3-line clamps with ellipsis
+- [ ] Dashboard follows the layout described here: 2 `PrimaryCard` + 2 `ContentCard`, 3-line clamps with ellipsis
 - [ ] Uploading a real PDF against the running backend returns success and the file appears in `Backend/uploads/`
 - [ ] Non-PDF files show the error banner; upload failure (backend off) shows the error banner
 - [ ] `tone` is the only variant selector on `StatChip`; no boolean props anywhere

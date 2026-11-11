@@ -1,11 +1,12 @@
 "use client";
 
-import { useId, useRef, useState, type DragEvent } from "react";
-import { Check, CircleAlert, FileText, FileUp, Loader2, Plus, RotateCcw, Upload } from "lucide-react";
+import { useRef, useState, type DragEvent } from "react";
+import { Check, CircleAlert, FileText, Loader2, RotateCcw, Upload } from "lucide-react";
+import { jobStageLabel } from "@/services/projects/jobs";
+import { documentStatusLabel, projectScope } from "@/lib/projects";
 import { useWorkspace } from "@/components/providers/workspace-provider";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
 function PdfDropzone({ disabled, onFiles }: { disabled: boolean; onFiles: (files: File[]) => void }) {
@@ -28,48 +29,75 @@ function PdfDropzone({ disabled, onFiles }: { disabled: boolean; onFiles: (files
   );
 }
 
-export function SourceUploadDialog({ notebookId, onClose }: { notebookId: string; onClose: () => void }) {
-  const notebook = useWorkspace((state) => state.notebooksMap[notebookId]);
-  const documents = useWorkspace((state) => state.documents);
-  const status = useWorkspace((state) => state.documentsStatus);
-  const error = useWorkspace((state) => state.documentsError);
+export function DocumentUploadDialog({ projectId, onClose }: { projectId: string; onClose: () => void }) {
+  const identity = useWorkspace((state) => state.identity);
   const uploading = useWorkspace((state) => state.isUploading);
-  const uploadNotebookId = useWorkspace((state) => state.uploadNotebookId);
+  const uploadingProjectId = useWorkspace((state) => state.uploadingProjectId);
   const uploadQueue = useWorkspace((state) => state.uploadQueue);
   const uploadDocuments = useWorkspace((state) => state.uploadDocuments);
   const clearUploadQueue = useWorkspace((state) => state.clearUploadQueue);
-  const refreshDocuments = useWorkspace((state) => state.refreshDocuments);
-  const addNotebookSources = useWorkspace((state) => state.addNotebookSources);
-  const [selected, setSelected] = useState<string[]>([]);
-  const [tab, setTab] = useState("upload");
-  const id = useId();
-  const available = documents.filter((document) => !notebook?.sourceFilenames.includes(document.filename));
-  const queue = uploadNotebookId === notebookId ? uploadQueue : [];
+  const jobsById = useWorkspace((state) => state.jobsById);
+  const documentsPage = useWorkspace((state) => (identity ? state.documentsByScope[projectScope(identity, projectId)] : undefined));
+  const queue = uploadingProjectId === projectId ? uploadQueue : [];
+  const documents = documentsPage?.items ?? [];
 
   function close() {
-    if (!uploading && uploadNotebookId === notebookId) clearUploadQueue();
+    if (!uploading && uploadingProjectId === projectId) clearUploadQueue();
     onClose();
   }
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) close(); }}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader><DialogTitle className="text-xl font-semibold tracking-tight">Bring your sources together</DialogTitle><DialogDescription>Add PDFs to this notebook. Answers will use only the sources you add here.</DialogDescription></DialogHeader>
-        <Tabs value={tab} onValueChange={setTab} className="mt-2 gap-4">
-          <TabsList className="w-full"><TabsTrigger value="upload"><FileUp />Upload PDFs</TabsTrigger><TabsTrigger value="existing"><FileText />Existing sources</TabsTrigger></TabsList>
-          <TabsContent value="upload" className="space-y-4">
-            <PdfDropzone disabled={uploading} onFiles={(files) => void uploadDocuments(files, notebookId)} />
-            <p className="text-center text-[11px] leading-5 text-muted-foreground">PDFs with selectable text. Matching filenames replace existing sources on this API.</p>
-            {uploading && uploadNotebookId !== notebookId ? <p role="status" className="text-sm text-muted-foreground">Another notebook is uploading. You can add more files when it finishes.</p> : null}
-            {queue.length ? <ul aria-live="polite" aria-label="Upload progress" className="max-h-52 space-y-2 overflow-y-auto">{queue.map((task) => <li key={task.id} className="flex items-start gap-3 rounded-lg border p-3">{task.status === "processing" ? <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" /> : task.status === "done" ? <Check className="mt-0.5 size-4 shrink-0" /> : task.status === "error" ? <CircleAlert className="mt-0.5 size-4 shrink-0 text-destructive" /> : <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />}<div className="min-w-0"><p className="truncate text-xs font-medium">{task.filename}</p><p className={cn("mt-1 text-[11px] leading-5 text-muted-foreground", task.status === "error" && "text-destructive")}>{task.message ?? (task.status === "processing" ? "Reading and indexing your PDF..." : "Waiting to upload...")}</p></div></li>)}</ul> : null}
-          </TabsContent>
-          <TabsContent value="existing" className="space-y-3">
-            <div className="flex items-center justify-between gap-3"><p className="text-xs text-muted-foreground">PDFs available on the connected API</p><Button variant="ghost" size="icon-sm" onClick={() => void refreshDocuments()} disabled={status === "loading" || uploading} aria-label="Refresh available sources"><RotateCcw className={status === "loading" ? "animate-spin" : ""} /></Button></div>
-            {error ? <p role="alert" className="rounded-lg border border-destructive/20 p-3 text-xs leading-5 text-destructive">{error}</p> : null}
-            {status === "loading" ? <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />Loading available PDFs...</div> : available.length ? <div className="max-h-64 space-y-1 overflow-y-auto rounded-xl border p-2">{available.map((document, index) => <label key={document.filename} htmlFor={`${id}-${index}`} className="flex cursor-pointer items-center gap-3 rounded-lg p-3 hover:bg-muted"><input id={`${id}-${index}`} type="checkbox" checked={selected.includes(document.filename)} onChange={(event) => setSelected((previous) => event.target.checked ? [...previous, document.filename] : previous.filter((filename) => filename !== document.filename))} className="size-4 shrink-0 accent-primary" /><FileText className="size-4 shrink-0 text-muted-foreground" /><span className="min-w-0 break-all text-xs">{document.filename}</span></label>)}</div> : <div className="rounded-xl border border-dashed px-5 py-10 text-center"><FileText className="mx-auto mb-3 size-6 text-muted-foreground" /><p className="text-sm">No additional PDFs available</p><p className="mt-2 text-xs leading-5 text-muted-foreground">Upload a new PDF to add your first source.</p></div>}
-          </TabsContent>
-        </Tabs>
-        <DialogFooter className="mt-2"><Button variant="outline" onClick={close}>{uploading ? "Continue in background" : "Done"}</Button>{tab === "existing" ? <Button disabled={!selected.length} onClick={() => { addNotebookSources(notebookId, selected); close(); }}><Plus />Add {selected.length || "selected"} {selected.length === 1 ? "source" : "sources"}</Button> : null}</DialogFooter>
+        <DialogHeader><DialogTitle className="text-xl font-semibold tracking-tight">Bring your sources together</DialogTitle><DialogDescription>Add PDFs to this project. Answers will use only the ready sources in this project — the same filename may be uploaded again as a distinct document.</DialogDescription></DialogHeader>
+        <div className="mt-2 space-y-4">
+          <PdfDropzone disabled={uploading} onFiles={(files) => void uploadDocuments(files, projectId)} />
+          <p className="text-center text-[11px] leading-5 text-muted-foreground">PDFs with selectable text. Uploads are stored first, then processed in the background — you can navigate away and return; status is polled with backoff until it completes.</p>
+          {uploading && uploadingProjectId !== projectId ? <p role="status" className="text-sm text-muted-foreground">Another project is uploading. You can add more files when it finishes.</p> : null}
+          {queue.length ? (
+            <ul aria-live="polite" aria-label="Upload progress" className="max-h-52 space-y-2 overflow-y-auto">
+              {queue.map((task) => {
+                const job = task.jobId ? jobsById[task.jobId] : undefined;
+                const document = task.documentId ? documents.find((item) => item.id === task.documentId) : undefined;
+                return (
+                  <li key={task.id} className="rounded-lg border p-3">
+                    <div className="flex items-start gap-3">
+                      {task.status === "error" ? <CircleAlert className="mt-0.5 size-4 shrink-0 text-destructive" /> : task.status === "done" ? <Check className="mt-0.5 size-4 shrink-0" /> : task.status === "uploading" || task.status === "processing" ? <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" /> : <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium">{task.fileName}</p>
+                        <p className={cn("mt-1 text-[11px] leading-5 text-muted-foreground", task.status === "error" && "text-destructive")}>
+                          {task.message ?? (task.status === "uploading" ? `Uploading${task.progress != null ? ` ${task.progress}%` : "…"}` : document ? `${documentStatusLabel(document.status)}${job?.stage ? ` · ${jobStageLabel(job.stage)}` : ""}` : "Waiting…")}
+                        </p>
+                        {task.progress != null && task.status === "uploading" ? (
+                          <div className="mt-2 h-1.5 overflow-hidden rounded bg-muted" role="progressbar" aria-valuenow={task.progress} aria-valuemin={0} aria-valuemax={100} aria-label={`Upload progress for ${task.fileName}`}>
+                            <div className="h-full bg-primary transition-[width]" style={{ width: `${task.progress}%` }} />
+                          </div>
+                        ) : null}
+                        {document?.processingError ? <p className="mt-1 text-[11px] text-destructive">{document.processingError}</p> : null}
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">PDFs already in this project</p>
+            <Button variant="ghost" size="icon-sm" disabled aria-label="Project documents refresh automatically"><RotateCcw /></Button>
+          </div>
+          {documents.length ? (
+            <ul className="max-h-48 space-y-1 overflow-y-auto rounded-xl border p-2">
+              {documents.map((document) => (
+                <li key={document.id} className="flex items-center gap-3 rounded-lg p-3">
+                  <FileText className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 truncate text-xs" title={document.fileName}>{document.fileName}</span>
+                  <span className="shrink-0 text-[10px] text-muted-foreground">{documentStatusLabel(document.status)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="text-xs text-muted-foreground">No project documents yet.</p>}
+        </div>
+        <DialogFooter className="mt-2"><Button variant="outline" onClick={close}>{uploading ? "Continue in background" : "Done"}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );

@@ -10,9 +10,6 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
-/coverage
-
 # next.js
 /.next/
 /out/
@@ -30,17 +27,14 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
-!.env.example
-
-# Playwright output and local authentication state
-/playwright-report/
-/test-results/
-/blob-report/
-/playwright/.cache/
-/playwright/.auth/
-/e2e/.auth/
+# Environment files and secrets (including uppercase variants)
+.[eE][nN][vV]*
+*.[eE][nN][vV]
+*.[eE][nN][vV].*
+[eE][nN][vV]
+# Keep env.example, .env.example, and named *.env.example templates trackable
+![eE][nN][vV].[eE][xX][aA][mM][pP][lL][eE]
+!*.[eE][nN][vV].[eE][xX][aA][mM][pP][lL][eE]
 
 # vercel
 .vercel

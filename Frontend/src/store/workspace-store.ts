@@ -1,49 +1,71 @@
 import { createStore } from "zustand/vanilla";
-import { createJSONStorage, persist } from "zustand/middleware";
-import { ChatActions, initialChatState, type ChatAction, type ChatState } from "@/store/chat/slice";
+import type { ApplicationUser } from "@/lib/api-types";
+import { ConversationsActions, initialConversationsState, type ConversationsAction, type ConversationsState } from "@/store/conversations/slice";
 import { DocumentsActions, initialDocumentsState, type DocumentsAction, type DocumentsState } from "@/store/documents/slice";
 import { flattenActions } from "@/store/flatten-actions";
-import { NotebooksActions, initialNotebooksState, type NotebooksAction, type NotebooksState } from "@/store/notebooks/slice";
-import { restoreWorkspace } from "@/store/persistence";
+import { NotesActions, initialNotesState, type NotesAction, type NotesState } from "@/store/notes/slice";
+import { ProjectsActions, initialProjectsState, type ProjectsAction, type ProjectsState } from "@/store/projects/slice";
+import type { StoreSetter } from "@/store/types";
 
-export type WorkspaceStore = DocumentsState & DocumentsAction & ChatState & ChatAction & NotebooksState & NotebooksAction;
+export interface IdentityState {
+  identity: string | null;
+  identityGeneration: number;
+  applicationUser: ApplicationUser | null;
+}
+
+export const initialIdentityState: IdentityState = {
+  identity: null,
+  identityGeneration: 0,
+  applicationUser: null,
+};
+
+export type WorkspaceStore =
+  IdentityState & ProjectsState & ProjectsAction & DocumentsState & DocumentsAction &
+  ConversationsState & ConversationsAction & NotesState & NotesAction & {
+    setIdentity: (identity: string | null) => void;
+    setApplicationUser: (user: ApplicationUser | null) => void;
+    resetWorkspaceForIdentity: (identity: string | null) => void;
+  };
 
 export function createWorkspaceStore() {
-  let reportStorageError: () => void = () => {};
-  const store = createStore<WorkspaceStore>()(
-    persist(
-      (set, get) => ({
+  const identityActions = (set: StoreSetter<WorkspaceStore>, get: () => WorkspaceStore) => ({
+    setIdentity: (identity: string | null) => {
+      const current = get().identity;
+      if (current === identity) return;
+      // Synchronous isolation (FE-02): abort everything, bump generation so
+      // late completions are rejected, and clear all in-memory server data
+      // BEFORE any new fetch can start for the next identity.
+      get().internal_cancelProjectRequests();
+      get().internal_cancelDocumentRequests();
+      get().internal_cancelConversations();
+      set({
+        ...initialProjectsState,
         ...initialDocumentsState,
-        ...initialChatState,
-        ...initialNotebooksState,
-        ...flattenActions(new DocumentsActions(set, get)),
-        ...flattenActions(new ChatActions(set, get)),
-        ...flattenActions(new NotebooksActions(set, get)),
-      }),
-      {
-        name: "notemind-workspace",
-        version: 1,
-        storage: createJSONStorage(() => ({
-          getItem: (name) => {
-            try { return localStorage.getItem(name); } catch { reportStorageError(); return null; }
-          },
-          setItem: (name, value) => {
-            try { localStorage.setItem(name, value); } catch { reportStorageError(); }
-          },
-          removeItem: (name) => {
-            try { localStorage.removeItem(name); } catch { reportStorageError(); }
-          },
-        })),
-        skipHydration: true,
-        partialize: (state) => ({ notebooksMap: state.notebooksMap, threadsMap: state.threadsMap, notesMap: state.notesMap, errorsMap: state.errorsMap }),
-        merge: restoreWorkspace,
-        onRehydrateStorage: () => (_state, error) => { if (error) reportStorageError(); },
-      },
-    ),
-  );
-  reportStorageError = () => queueMicrotask(() => {
-    if (!store.getState().storageError) store.getState().reportStorageError();
+        ...initialConversationsState,
+        notes: [],
+        drafts: {},
+        notesOwner: null,
+        identity,
+        identityGeneration: get().identityGeneration + 1,
+      });
+      get().loadNotesForUser(identity);
+    },
+    setApplicationUser: (user: ApplicationUser | null) => set({ applicationUser: user }),
+    resetWorkspaceForIdentity: (identity: string | null) => get().setIdentity(identity),
   });
+
+  const store = createStore<WorkspaceStore>()((set, get) => ({
+    ...initialIdentityState,
+    ...initialProjectsState,
+    ...initialDocumentsState,
+    ...initialConversationsState,
+    ...initialNotesState,
+    ...flattenActions(new ProjectsActions(set, get)),
+    ...flattenActions(new DocumentsActions(set, get)),
+    ...flattenActions(new ConversationsActions(set, get)),
+    ...flattenActions(new NotesActions(set, get)),
+    ...identityActions(set, get),
+  }));
   return store;
 }
 
