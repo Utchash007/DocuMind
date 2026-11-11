@@ -85,3 +85,6 @@ Desktop.ini
 !/Backend/
 !/Frontend/
 !/docs/
+# All-in-one image for Render (single Docker Web Service, repo-root context)
+!/Dockerfile
+!/.dockerignore
