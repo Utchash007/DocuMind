@@ -43,10 +43,10 @@ function AssistantMessage({ message, projectId }: { message: Message; projectId:
     catch { toast.error("Copy is unavailable. Select the answer text to copy it."); }
   }
   return (
-    <article aria-label="NoteMind response" className="message-item flex gap-3 sm:gap-4">
+    <article aria-label="DocuMind response" className="message-item flex gap-3 sm:gap-4">
       <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg border bg-card"><Sparkles className="size-3.5" strokeWidth={1.6} /></span>
       <div className="min-w-0 flex-1">
-        <p className="mb-3 flex items-center gap-2 text-xs font-semibold">NoteMind<span className="text-[10px] font-normal text-muted-foreground">Grounded in your sources</span></p>
+        <p className="mb-3 flex items-center gap-2 text-xs font-semibold">DocuMind<span className="text-[10px] font-normal text-muted-foreground">Grounded in your sources</span></p>
         <Markdown text={message.content} />
         {message.citations?.length ? <div className="mt-4"><Citations citations={message.citations} projectId={projectId} /></div> : null}
         <div className="mt-3 flex items-center gap-1">

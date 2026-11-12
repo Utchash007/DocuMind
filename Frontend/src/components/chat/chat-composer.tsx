@@ -77,7 +77,7 @@ export function ChatComposer({ projectId, conversationId, readyDocumentCount, on
           </div>
         </div>
       </form>
-      <p className="mt-3 text-center text-[10px] text-muted-foreground">NoteMind can make mistakes. Verify important info.</p>
+      <p className="mt-3 text-center text-[10px] text-muted-foreground">DocuMind can make mistakes. Verify important info.</p>
     </div>
   );
 }

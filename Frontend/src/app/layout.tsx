@@ -4,7 +4,7 @@ import { AppProviders } from "@/components/providers/app-providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: { default: "NoteMind — Your research, connected", template: "%s | NoteMind" },
+  title: { default: "DocuMind — Your research, connected", template: "%s | DocuMind" },
   description: "A thoughtful home for your research. Bring your sources together, ask better questions, and keep what matters.",
 };
 

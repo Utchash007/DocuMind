@@ -22,7 +22,7 @@ export default function HelpPage() {
         <Button asChild variant="ghost" size="sm" className="mb-8 -ml-2 text-muted-foreground"><Link href="/"><ArrowLeft />Back to projects</Link></Button>
         <BookOpenText className="mb-4 size-8 text-muted-foreground" />
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Make room for understanding.</h1>
-        <p className="mt-4 text-base leading-7 text-muted-foreground">NoteMind brings your documents, questions, and ideas into one focused workspace.</p>
+        <p className="mt-4 text-base leading-7 text-muted-foreground">DocuMind brings your documents, questions, and ideas into one focused workspace.</p>
         <div className="my-10 grid gap-4">
           {steps.map(({ icon: Icon, title, text }, index) => <section key={title} className="flex gap-4 rounded-xl border bg-card p-5"><span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-secondary"><Icon className="size-5" /></span><div><h2 className="font-medium">{index + 1}. {title}</h2><p className="mt-1.5 text-sm leading-6 text-muted-foreground">{text}</p></div></section>)}
         </div>

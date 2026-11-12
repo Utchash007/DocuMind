@@ -11,7 +11,7 @@ export function FeedbackButton() {
   const [feedback, setFeedback] = useState("");
   async function copyFeedback() {
     try {
-      await navigator.clipboard.writeText(`NoteMind feedback\n\n${feedback.trim()}`);
+      await navigator.clipboard.writeText(`DocuMind feedback\n\n${feedback.trim()}`);
       toast.success("Feedback copied. Share it with the project maintainer.");
     } catch {
       toast.error("Copy is unavailable. You can select and copy the feedback text instead.");

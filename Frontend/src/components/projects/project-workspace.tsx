@@ -39,7 +39,7 @@ export function ProjectWorkspace({ projectId, conversationId }: { projectId: str
   }, [identity, projectId, conversationId, loadProjectDetail, loadDocuments, loadConversations, loadConversationDetail]);
 
   useEffect(() => {
-    if (project?.name) document.title = `${project.name} | NoteMind`;
+    if (project?.name) document.title = `${project.name} | DocuMind`;
   }, [project?.name]);
 
   if (!identity) return <WorkspaceSkeleton />;

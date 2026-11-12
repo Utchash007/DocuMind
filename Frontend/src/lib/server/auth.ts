@@ -122,7 +122,7 @@ export async function fetchSessionUser(secret: string): Promise<SessionUser> {
   try {
     const user = await account.get();
     if (!user.email) {
-      throw new AppwriteError(401, "unauthenticated", "An email account is required to access NoteMind.");
+      throw new AppwriteError(401, "unauthenticated", "An email account is required to access DocuMind.");
     }
     return { id: user.$id, email: user.email, name: user.name ?? "" };
   } catch (error) {

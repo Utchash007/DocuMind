@@ -82,8 +82,8 @@ export function conversationMarkdown(project: Project, conversation: Conversatio
   const sorted = [...messages].toSorted((a, b) => a.position - b.position);
   return [
     `# ${project.name}`,
-    conversation.title ? `## ${conversation.title}\n\nExported from NoteMind` : "Exported from NoteMind",
-    `## Conversation\n\n${sorted.map((message) => `### ${message.role === "user" ? "You" : "NoteMind"}\n\n${message.content}\n\n${citationMarkdown(message.citations)}`).join("\n\n") || "No conversation yet."}`,
+    conversation.title ? `## ${conversation.title}\n\nExported from DocuMind` : "Exported from DocuMind",
+    `## Conversation\n\n${sorted.map((message) => `### ${message.role === "user" ? "You" : "DocuMind"}\n\n${message.content}\n\n${citationMarkdown(message.citations)}`).join("\n\n") || "No conversation yet."}`,
     `## Saved notes (on this device)\n\n${notes.map((note) => `### ${note.title}\n\n${note.text}\n\n${citationMarkdown(note.citations)}`).join("\n\n") || "No saved notes."}`,
   ].join("\n\n");
 }
@@ -94,7 +94,7 @@ export function projectMarkdown(project: Project, documents: Document[], convers
   );
   return [
     `# ${project.name}`,
-    "Exported from NoteMind",
+    "Exported from DocuMind",
     project.description ? `${project.description}\n` : "",
     `## Sources\n\n${documents.map((document) => `- ${document.fileName} (${documentStatusLabel(document.status)})`).join("\n") || "No sources added."}`,
     sections.join("\n\n---\n\n") || "## Conversation\n\nNo conversations yet.",

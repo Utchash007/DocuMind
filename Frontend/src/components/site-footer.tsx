@@ -9,7 +9,7 @@ export function SiteFooter() {
         <Link href="/help#terms" className="rounded-sm hover:text-foreground">Terms</Link>
         <Link href="/help" className="rounded-sm hover:text-foreground">Help</Link>
       </nav>
-      <div className="flex items-center gap-3"><span>NoteMind © 2026</span><span aria-hidden="true">·</span><FeedbackButton /></div>
+      <div className="flex items-center gap-3"><span>DocuMind © 2026</span><span aria-hidden="true">·</span><FeedbackButton /></div>
     </footer>
   );
 }

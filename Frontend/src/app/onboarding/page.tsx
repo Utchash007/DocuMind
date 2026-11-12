@@ -30,7 +30,7 @@ export default async function OnboardingPage() {
         <Card className="w-full max-w-[420px] gap-0 rounded-2xl p-7 shadow-sm sm:p-9">
           <div className="mb-7 text-center">
             <BrandMark className="mb-5 size-12 rounded-2xl" />
-            <h1 className="text-[26px] font-semibold tracking-tight">Welcome to NoteMind</h1>
+            <h1 className="text-[26px] font-semibold tracking-tight">Welcome to DocuMind</h1>
             <p className="mt-2 text-sm text-muted-foreground">One last step before your research workspace opens.</p>
           </div>
           <OnboardingForm appUser={context.appUser} />

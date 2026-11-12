@@ -26,7 +26,7 @@ export function proxy(request: NextRequest) {
   if (!secret) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json(
-        { detail: { code: "unauthenticated", message: "Sign in to access NoteMind." } },
+        { detail: { code: "unauthenticated", message: "Sign in to access DocuMind." } },
         { status: 401 },
       );
     }
