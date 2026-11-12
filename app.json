@@ -1,0 +1,83 @@
+{
+  "name": "NoteMind",
+  "description": "PDF research workspace with Jina AI embeddings, Appwrite authentication and private storage.",
+  "repository": "https://github.com/Utchash007/DocuMind",
+  "stack": "container",
+  "success_url": "/sign-in",
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "standard-2x"
+    }
+  },
+  "env": {
+    "DATABASE_URL": {
+      "description": "Deployment PostgreSQL connection string. The release phase applies the DocuMind schema to this database.",
+      "required": true
+    },
+    "APPWRITE_ENDPOINT": {
+      "description": "Your Appwrite endpoint, including /v1, such as https://<REGION>.cloud.appwrite.io/v1.",
+      "required": true
+    },
+    "APPWRITE_PROJECT_ID": {
+      "description": "The Appwrite project shared by authentication and PDF storage.",
+      "required": true
+    },
+    "APPWRITE_API_KEY": {
+      "description": "Server-only Appwrite API key with the permissions needed for email-code authentication and private PDF storage.",
+      "required": true
+    },
+    "APPWRITE_STORAGE_BUCKET_ID": {
+      "description": "Private PDF bucket with file security enabled, PDF-only uploads and a 25 MiB maximum file size.",
+      "required": true
+    },
+    "CHROMA_API_KEY": {
+      "description": "Chroma Cloud API key.",
+      "required": true
+    },
+    "CHROMA_TENANT": {
+      "description": "Chroma Cloud tenant containing the document index.",
+      "required": true
+    },
+    "CHROMA_DATABASE": {
+      "description": "Chroma Cloud database containing the document index.",
+      "required": true
+    },
+    "GROQ_API_KEY": {
+      "description": "Groq API key for generating answers.",
+      "required": true
+    },
+    "DOCUMIND_EMBEDDING_PROVIDER": {
+      "description": "This Heroku deployment uses Jina AI for both indexing and retrieval.",
+      "value": "jina"
+    },
+    "JINA_API_KEY": {
+      "description": "Jina AI API key used by the API and PDF worker.",
+      "required": true
+    },
+    "JINA_EMBEDDING_MODEL": {
+      "description": "Jina model used by the existing index, with 1024-dimensional output.",
+      "value": "jina-embeddings-v5-omni-small"
+    },
+    "DOCUMIND_ALLOW_MOCK_EMBEDDINGS": {
+      "value": "false"
+    },
+    "BACKEND_URL": {
+      "value": "http://127.0.0.1:8000"
+    },
+    "HOSTNAME": {
+      "value": "0.0.0.0"
+    },
+    "RUN_MIGRATIONS": {
+      "description": "Migrations run during the Heroku release phase instead of web startup.",
+      "value": "false"
+    },
+    "NEW_RELIC_LICENSE_KEY": {
+      "description": "Optional New Relic license key; instrumentation stays off when empty.",
+      "required": false
+    },
+    "NEW_RELIC_ENVIRONMENT": {
+      "value": "production"
+    }
+  }
+}

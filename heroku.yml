@@ -1,0 +1,18 @@
+# Heroku builds the root Dockerfile from GitHub on the Cedar container stack.
+build:
+  docker:
+    web: Dockerfile
+
+release:
+  image: web
+  command:
+    - cd /app/backend && exec alembic upgrade head
+
+# All three processes inherit the same Jina settings. The release phase owns
+# schema migrations; web restarts only start the API, worker and frontend.
+run:
+  web: >-
+    env DOCUMIND_EMBEDDING_PROVIDER=jina
+    JINA_EMBEDDING_MODEL="${JINA_EMBEDDING_MODEL:-jina-embeddings-v5-omni-small}"
+    RUN_MIGRATIONS=false
+    /usr/local/bin/start.sh

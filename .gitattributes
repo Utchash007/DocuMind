@@ -1,0 +1,6 @@
+# Container startup files must keep Unix line endings in Windows checkouts.
+/Backend/docker-entrypoint.sh text eol=lf
+/Backend/deploy/*.sh text eol=lf
+/Backend/deploy/*.conf text eol=lf
+/Dockerfile text eol=lf
+/heroku.yml text eol=lf

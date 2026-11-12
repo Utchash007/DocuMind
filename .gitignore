@@ -85,6 +85,9 @@ Desktop.ini
 !/Backend/
 !/Frontend/
 !/docs/
-# All-in-one image for Render (single Docker Web Service, repo-root context)
+# All-in-one image and browser-based Heroku deployment
 !/Dockerfile
 !/.dockerignore
+!/.gitattributes
+!/heroku.yml
+!/app.json

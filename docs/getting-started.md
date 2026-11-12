@@ -124,24 +124,37 @@ The backend exposes [interactive docs](http://localhost:8000/docs), [ReDoc](http
 
 ## 4b. Run the same stack with containers
 
-Instead of the three terminals, build the two images and start the stack from the repository root:
+Instead of the three terminals, build the two images and run them on a shared Docker network. The repository also ships a root all-in-one `Dockerfile` for Render (Next.js, FastAPI and the worker in one container; see the README's "All-in-one image for Render" section). There is no Compose file, so build each image explicitly from the repository root:
 
 ```powershell
-docker compose build
-docker compose run --rm backend alembic upgrade head
-docker compose up -d
+docker network create documind
+docker build -t documind-backend -f Backend/Dockerfile Backend
+docker build -t notemind-web -f Frontend/Dockerfile Frontend
 ```
 
-| Service | Address | Notes |
+Apply the schema once, then start the API and worker. Neither publishes a port: both are reachable only over the shared network, as the browser-facing architecture requires.
+
+```powershell
+docker run --rm --network documind --env-file .env documind-backend alembic upgrade head
+docker run -d --name backend --network documind --env-file .env documind-backend
+docker run -d --name worker --network documind --env-file .env documind-backend python -m app.workers.pdf_worker
+```
+
+Start the frontend with its port published and `BACKEND_URL` pointing at the API container:
+
+```powershell
+docker run -d --name frontend --network documind -p 3000:3000 -e BACKEND_URL=http://backend:8000 --env-file Frontend/.env.local notemind-web
+```
+
+| Container | Address | Notes |
 | --- | --- | --- |
 | `frontend` | [localhost:3000](http://localhost:3000) | Only published port; the browser never talks to the API directly |
-| `backend` | `http://backend:8000` | Reachable from the frontend over the internal network only |
+| `backend` | `http://backend:8000` (container DNS) | Reachable from the frontend over the shared network only |
 | `worker` | none | Same image as the API, runs `python -m app.workers.pdf_worker` |
-| `postgres` | `postgres:5432` | Optional, enabled with `--profile local-db` |
 
-Configuration is read from the repository-root `.env`, so the same file drives the containers and the local processes. Server-only values are injected at runtime; `NEXT_PUBLIC_*` values are baked into the frontend image at build time, so rebuild the image after changing them.
+Containers read configuration from the environment: `--env-file .env` drives the backend/worker and `Frontend/.env.local` drives the frontend — the same files the local processes use. Server-only values are injected at runtime; `NEXT_PUBLIC_*` values are baked into the frontend image at build time, so rebuild the image after changing them. A `DATABASE_URL` pointing at `localhost` or `127.0.0.1` is unreachable from inside a container; use a host name the network can resolve.
 
-To add New Relic, put the license key in the root `.env` and restart the stack:
+To add New Relic, put the license key in `.env` (and the frontend environment) and recreate the containers:
 
 ```dotenv
 NEW_RELIC_LICENSE_KEY=<your license key>

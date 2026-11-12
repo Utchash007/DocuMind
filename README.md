@@ -45,6 +45,49 @@ if (-not (Test-Path Frontend/.env.local)) { Copy-Item Frontend/.env.example Fron
 
 Once running, open [localhost:3000](http://localhost:3000). Interactive API documentation is at [localhost:8000/docs](http://localhost:8000/docs).
 
+## Run with containers
+
+Two multi-stage images, `Backend/Dockerfile` and `Frontend/Dockerfile`. The browser only ever talks to the frontend; the frontend server reaches the FastAPI backend over a shared Docker network, and the backend is not published to the host.
+
+```powershell
+docker network create documind
+docker build -t documind-backend -f Backend/Dockerfile Backend
+docker build -t notemind-web -f Frontend/Dockerfile Frontend
+docker run --rm --network documind --env-file .env documind-backend alembic upgrade head
+```
+
+Run the API, worker, and frontend containers with the commands in [getting-started.md](docs/getting-started.md#4b-run-the-same-stack-with-containers), then open [localhost:3000](http://localhost:3000). Configuration comes from the environment (`--env-file .env` and `Frontend/.env.local`) — the same files that drive the local processes.
+
+### All-in-one image for Render
+
+The root `Dockerfile` builds the same three components into one image for platforms that run a single container, such as a Render **Web Service** with the Docker runtime (context: repository root, Dockerfile path: `./Dockerfile`):
+
+- the Next.js standalone server listens on `0.0.0.0:${PORT}` (Render assigns `PORT`; defaults to `10000` elsewhere), which is the only public port;
+- FastAPI runs on `127.0.0.1:8000` behind the frontend's `/api/backend` proxy (`BACKEND_URL=http://127.0.0.1:8000`), alongside the PDF worker;
+- Alembic migrations run at container start (`RUN_MIGRATIONS=false` skips them); supervisor restarts a crashed process;
+- all three processes write to stdout/stderr so Render's log stream shows everything.
+
+Set the environment variables from `Backend/.env.example` and `Frontend/.env.example` on the service (at minimum `DATABASE_URL`, the Appwrite server values, `APPWRITE_STORAGE_BUCKET_ID`, `CHROMA_API_KEY`/`CHROMA_TENANT`/`CHROMA_DATABASE`, `GROQ_API_KEY`, and `CORS_ORIGINS=https://<your-service>.onrender.com`). Keep `DOCUMIND_EMBEDDING_PROVIDER`/`HF_API_KEY` (or `JINA_API_KEY` when using Jina), and set the New Relic variables only if you use them. Do not set `PORT`; Render provides it. Set the health check path to `/sign-in`. An always-on instance is recommended: the in-container PDF worker only runs while the web service is awake, and free instances sleep.
+
+### Heroku deployment from Windows
+
+[![Deploy to Heroku](https://www.herokucdn.com/deploy/button.svg)](https://www.heroku.com/deploy?template=https://github.com/Utchash007/DocuMind/tree/main)
+
+The root `heroku.yml` and `app.json` enable browser-based deployment from GitHub. Heroku builds the image remotely, runs Alembic in its release phase, and starts all three processes on one web dyno. The deployment is configured for **Jina AI**, requires **`JINA_API_KEY`**, and uses **`jina-embeddings-v5-omni-small`** to match the configured index.
+
+Publish the deployment changes to GitHub before using the button. Follow the [Heroku browser deployment guide](docs/heroku.md) for the configuration form, paid dyno sizing, Appwrite hostname setup, and future GitHub deployments. No local Heroku CLI or Docker installation is needed.
+
+### New Relic
+
+Both tiers report to New Relic. Add the license key to the root `.env`:
+
+```dotenv
+NEW_RELIC_LICENSE_KEY=<your license key>
+NEW_RELIC_ENVIRONMENT=production
+```
+
+The agent stays switched off while the key is empty, so nothing else changes. With a key set, the API, the PDF worker, and the Next.js server report as `DocuMind Backend` and `NoteMind Web`, and the trace context is propagated across the internal proxy, so one user request is one distributed trace.
+
 ## Your first research session
 
 1. **Sign in** with the code sent to your email and complete your profile.
@@ -88,6 +131,8 @@ Original PDFs live in Appwrite Storage, extracted text and vectors in Chroma, an
 | **Answers** | Groq API, Instructor, Pydantic | ![Groq](https://img.shields.io/badge/Groq-F55036?style=flat-square&logo=groq&logoColor=white) ![Pydantic](https://img.shields.io/badge/Pydantic-E92063?style=flat-square&logo=pydantic&logoColor=white) |
 | **Embeddings** | Hugging Face Inference API or Jina AI | ![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-FFD21E?style=flat-square) |
 | **Vector search** | Chroma Cloud, combined with BM25 keyword retrieval | ![ChromaDB](https://img.shields.io/badge/ChromaDB-0078D4?style=flat-square) |
+| **Observability** | New Relic APM for the API, the worker, and the web tier | ![NewRelic](https://img.shields.io/badge/New_Relic-1CE783?style=flat-square) |
+| **Containers** | Multi-stage Docker images | ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square) |
 
 ## Development and verification
 
@@ -105,11 +150,12 @@ The application is **v2-only**. Filename-based APIs, browser imports, and `/note
 
 ## Documentation and code map
 
-The repository keeps `Backend/`, `Frontend/`, `docs/`, `README.md`, and `.gitignore` at the root. Other root files and folders are local-only and ignored by Git.
+The repository keeps `Backend/`, `Frontend/`, `docs/`, `README.md`, `.gitignore`, `.gitattributes`, `Dockerfile`, `.dockerignore`, `heroku.yml`, and `app.json` at the root. Other root files and folders are local-only and ignored by Git.
 
 | Start here | What you'll find |
 | --- | --- |
 | [Local setup](docs/getting-started.md) | Service configuration, installation, startup, troubleshooting, and an API request example |
+| [Heroku deployment](docs/heroku.md) | Browser-only GitHub deployment with Jina AI, release migrations, and Appwrite setup |
 | [Frontend guide](Frontend/README.md) | Authentication, routes, interactions, state, and frontend verification |
 | [Backend reference](docs/backend/README.md) | Per-file and per-function explanations with numbered Python source |
 | [HTTP handlers](docs/backend/README.md#architecture-and-suggested-reading-order) and [TypeScript API types](Frontend/src/lib/api-types.ts) | Resource endpoints, response shapes, and ownership boundaries |

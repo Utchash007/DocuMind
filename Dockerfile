@@ -1,9 +1,7 @@
-# syntax=docker/dockerfile:1.7
-
 # =============================================================================
-# DocuMind / NoteMind — all-in-one image for Render (single Web Service)
+# DocuMind / NoteMind — all-in-one image for Render and Heroku
 #
-# One container runs the whole stack on Render's assigned $PORT:
+# One container runs the whole stack on the platform's assigned $PORT:
 #
 #   Internet ──► Next.js standalone frontend   0.0.0.0:${PORT:-10000}  (public)
 #                    │  /api/backend proxy (BACKEND_URL=http://127.0.0.1:8000)
@@ -18,6 +16,8 @@
 # Build context is the repository root:
 #   docker build -t documind-allinone .
 # On Render: Language "Docker", Dockerfile path ./Dockerfile, context .
+# On Heroku: heroku.yml builds this image; app.json selects the container stack.
+# Heroku runs migrations in its release phase and sets RUN_MIGRATIONS=false.
 # =============================================================================
 
 # ----------------------------------------------------------------------------
@@ -108,9 +108,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     NEW_RELIC_LOG=stdout
 
 # libstdc++/libgomp: compiled Chroma/ONNX extensions. supervisor: runs the three
-# processes in one container.
+# processes in one container. curl enables Heroku's release-phase log streaming.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libstdc++6 libgomp1 supervisor \
+ && apt-get install -y --no-install-recommends libstdc++6 libgomp1 supervisor curl \
  && rm -rf /var/lib/apt/lists/* \
  && groupadd --system --gid 1001 app \
  && useradd --system --uid 1001 --gid app --home-dir /app app
@@ -127,7 +127,8 @@ COPY --chown=app:app Backend/alembic.ini Backend/newrelic.ini /app/backend/
 # The backend entrypoint wraps a command in `newrelic-admin run-program` when
 # NEW_RELIC_LICENSE_KEY is set; it is a no-op otherwise.
 COPY --chown=app:app Backend/docker-entrypoint.sh /usr/local/bin/nr-entrypoint.sh
-RUN chmod +x /usr/local/bin/nr-entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/nr-entrypoint.sh \
+ && chmod +x /usr/local/bin/nr-entrypoint.sh
 
 # Frontend standalone server and its assets.
 COPY --from=frontend-build --chown=app:app /build/.next/standalone /app/frontend
@@ -139,73 +140,12 @@ COPY --chown=app:app Frontend/newrelic.cjs /app/frontend/newrelic.cjs
 # Supervisor program definitions: API on 127.0.0.1:8000 (internal), the PDF
 # worker, and the web server on 0.0.0.0:${PORT} (the only public port).
 # New Relic is enabled per process when NEW_RELIC_LICENSE_KEY is set.
-RUN cat > /etc/supervisor/documind.conf <<'EOF'
-[supervisord]
-nodaemon=true
-logfile=/dev/null
-pidfile=/tmp/supervisord.pid
-directory=/tmp
-
-[program:backend]
-command=/usr/local/bin/nr-entrypoint.sh python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
-directory=/app/backend
-priority=10
-autorestart=true
-startretries=5
-stopasgroup=true
-killasgroup=true
-stopwaitsecs=15
-stdout_logfile=/dev/stdout
-stdout_logfile_maxbytes=0
-stderr_logfile=/dev/stderr
-stderr_logfile_maxbytes=0
-
-[program:worker]
-command=/usr/local/bin/nr-entrypoint.sh python -m app.workers.pdf_worker
-directory=/app/backend
-priority=20
-autorestart=true
-startretries=5
-stopasgroup=true
-killasgroup=true
-stopwaitsecs=15
-stdout_logfile=/dev/stdout
-stdout_logfile_maxbytes=0
-stderr_logfile=/dev/stderr
-stderr_logfile_maxbytes=0
-
-[program:frontend]
-command=node server.js
-directory=/app/frontend
-priority=30
-autorestart=true
-startretries=5
-stopasgroup=true
-killasgroup=true
-stopwaitsecs=15
-stdout_logfile=/dev/stdout
-stdout_logfile_maxbytes=0
-stderr_logfile=/dev/stderr
-stderr_logfile_maxbytes=0
-EOF
-
-# Startup script: apply migrations (unless disabled), then hand PID 1 to
-# supervisord, which starts the API, worker and web server and restarts them
-# if they exit.
-RUN cat > /usr/local/bin/start.sh <<'EOF'
-#!/bin/sh
-set -eu
-cd /app/backend
-if [ "${RUN_MIGRATIONS:-true}" != "false" ]; then
-  echo "[start] Applying database migrations (set RUN_MIGRATIONS=false to skip)..."
-  alembic upgrade head
-else
-  echo "[start] RUN_MIGRATIONS=false; skipping database migrations."
-fi
-echo "[start] Launching API (127.0.0.1:8000), PDF worker and Next.js (0.0.0.0:${PORT:-10000})..."
-exec supervisord -n -c /etc/supervisor/documind.conf
-EOF
-RUN chmod +x /usr/local/bin/start.sh && chown -R app:app /app
+# COPY works with hosted Docker builders without BuildKit heredoc support.
+COPY Backend/deploy/supervisord.conf /etc/supervisor/documind.conf
+COPY Backend/deploy/start-all-in-one.sh /usr/local/bin/start.sh
+RUN sed -i 's/\r$//' /usr/local/bin/start.sh /etc/supervisor/documind.conf \
+ && chmod +x /usr/local/bin/start.sh \
+ && chown -R app:app /app
 
 USER app
 EXPOSE 10000
